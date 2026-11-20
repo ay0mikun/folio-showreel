@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {gifFramePlan} from '../dist/gif-plan.mjs';
 
 test('GIF durations match the composition, including fractional screen lengths',()=>{
-  for(const count of [1,2,6,12])for(const seconds of [.5,1.5,10,10/6])for(const fade of [.1,.4,Math.min(3,seconds*.8)]){
+  for(const count of [1,2,6,12])for(const seconds of [.1,.5,1.5,10,10/6])for(const fade of [.02,Math.min(.1,seconds*.8),Math.min(3,seconds*.8)]){
     const plan=gifFramePlan(count,seconds,fade);
     assert.equal(plan.reduce((sum,frame)=>sum+frame.delay,0),Math.round(count*seconds*100)*10);
     assert.ok(plan.every(frame=>frame.delay>0&&frame.time>=0&&frame.time<count*seconds));
@@ -21,4 +21,11 @@ test('transitions sample intermediate times and preserve the final screen hold',
   assert.equal(plan[0].delay,1000);
   assert.ok(plan.slice(1,-1).every(frame=>frame.time>1&&frame.time<1.5&&frame.delay===50));
   assert.deepEqual(plan.at(-1),{time:1.5,delay:1500});
+});
+
+
+test('twelve fast screens retain a 1.2 second GIF composition',()=>{
+  const plan=gifFramePlan(12,.1,.08);
+  assert.equal(plan.reduce((sum,frame)=>sum+frame.delay,0),1200);
+  assert.ok(plan.every(frame=>frame.delay>=20));
 });

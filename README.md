@@ -5,8 +5,8 @@ A browser-local app for turning up to 12 images into a sequential showreel, with
 Run `python3 -m http.server 8766 --directory dist` from this directory and open http://localhost:8766.
 
 - PNG, JPG and WebP imports in any aspect ratio. Images are normalized on import to 1920 × 1080, preserving proportions with letterboxing as needed.
-- Default 1.5 seconds per screen. Edit per-screen duration (0.5–10 seconds) or total duration; time is distributed evenly across the screens and includes transitions.
-- Editable crossfade length (0.1–3 seconds, capped at 80% of a screen slot). Soft uses quintic easing; Stiff dissolves directly through the middle 20% of the transition window.
+- Default 1.5 seconds per screen. Edit per-screen duration (0.1–10 seconds) or total duration; time is distributed evenly across the screens and includes transitions.
+- Editable crossfade length (0.02–3 seconds, capped at 80% of a screen slot). Soft uses quintic easing; Stiff dissolves directly through the middle 20% of the transition window.
 - New uploads sort naturally by filename (Screen 2 before Screen 10). Drag rows with a mouse, drag the grip on a touch device, use keyboard arrows on the grip, or use the existing move buttons. Dragging saves a custom order; Sort by name restores filename order. New batches append in natural order once a custom order is established.
 - Reorder and remove screens; preview, scrub, and save automatically with IndexedDB. Existing saved projects remain compatible.
 - Full HD 1920 × 1080 exports: silent 30 fps video (MP4 preferred, WebM fallback) or a looping animated GIF.
