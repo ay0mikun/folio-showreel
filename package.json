@@ -2,7 +2,7 @@
   "name": "folio-showreel",
   "version": "1.0.0",
   "private": true,
-  "description": "A browser-local Full HD video and GIF showreel studio for designers.",
+  "description": "A browser-local video and GIF showreel studio with original-size exports and custom backgrounds.",
   "scripts": {
     "dev": "python3 -m http.server 8766 --directory dist",
     "test": "node --test tests/*.test.mjs"
