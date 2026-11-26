@@ -1,27 +1,41 @@
+import {mountColorPicker} from './color-picker.mjs?v=07e3a5ca3d';
 import {gifFramePlan} from './gif-plan.mjs';
 import {sortByFilename,moveSource} from './source-order.mjs';
-import {resolveSize,sizeError,previewDimensions,renderComposition,GRADIENTS} from './composition.mjs';
+import {resolveSize,sizeError,previewDimensions,renderComposition,GRADIENTS} from './composition.mjs?v=e5684a3a7b';
 'use strict';
 const $=s=>document.querySelector(s);
 // Text fields can match :focus-visible after a click; rings follow Tab navigation only.
 document.addEventListener('keydown',event=>{if(event.key==='Tab')document.documentElement.dataset.keyboardFocus=''},true);
 document.addEventListener('pointerdown',()=>{delete document.documentElement.dataset.keyboardFocus},true);
 const FPS=30,MAX_IMAGES=12;
-const DEFAULTS={seconds:.6,fade:.48,feel:'soft',format:'video',orderMode:'name',background:'light',solidColor:'#fefefe',gradient:0,padding:8,radius:0,projectName:'Name of file',sizeMode:'source',width:null,height:null,sizeSourceId:null};
+const DEFAULTS={seconds:.6,fade:.48,feel:'soft',format:'gif',orderMode:'name',background:'none',solidColor:'#fefefe',gradient:0,backgroundPreset:null,padding:8,radius:0,projectName:'Name of file',sizeMode:'source',width:null,height:null,sizeSourceId:null};
 let screens=[],settings={...DEFAULTS},backgroundAsset=null,pendingSizeError='',playing=false,position=0,lastFrame=0,db=null,saveTimer,outputURL=null,rendering=false,cancelRender=null;
 const canvas=$('#preview'),context=canvas.getContext('2d',{alpha:true});
+const colorPicker=mountColorPicker($('#pickColor'),$('#colorPicker'),setSolidColor);
+let presetRequest=0;
 const totalDuration=()=>screens.length*settings.seconds;
 function outputSize(){return resolveSize(screens,settings)}
 function formatTime(t){const tenths=Math.round(t*10),minutes=Math.floor(tenths/600),seconds=(tenths%600)/10;return `${String(minutes).padStart(2,'0')}:${seconds.toFixed(1).padStart(4,'0')}`}
 function notify(message){$('#toast').textContent=message;$('#toast').classList.add('visible');clearTimeout(notify.timer);notify.timer=setTimeout(()=>$('#toast').classList.remove('visible'),4500)}
 function setError(message){$('#uploadError').textContent=message;$('#uploadError').hidden=!message}
 function setPlaying(value){playing=value;if(value)$('#play').innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pause preview-icon" aria-hidden="true"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></svg>';else $('#play').replaceChildren(assetIcon('35-1990-imgFrame2'));$('#play').setAttribute('aria-label',value?'Pause preview':'Play preview')}
-function assetIcon(name,className='figma-icon'){const image=document.createElement('img');image.src=`assets/figma/${name}.svg`;image.alt='';image.className=className;image.draggable=false;return image}
+const ICONS={'35-1990-imgFrame2':'play','35-1990-imgFrame3':'restart','35-547-imgFrame1':'35-547-imgFrame2','35-3052-imgDefault':'remove','35-3052-imgHover':'remove-hover'};
+function assetIcon(name,className='figma-icon'){const image=document.createElement('img');image.src=`assets/reelo/${ICONS[name]||name}.svg`;image.alt='';image.className=className;image.draggable=false;return image}
 function updateRange(input){const percentage=(Number(input.value)-Number(input.min))/(Number(input.max)-Number(input.min))*100;input.style.setProperty('--progress',Math.max(0,Math.min(100,percentage))+'%');if(input.id==='scrubber')input.parentElement.style.setProperty('--progress',Math.max(0,Math.min(100,percentage))+'%')}
-function downloadName(extension){return (settings.projectName||'Folio showreel').replace(/[<>:"/\\|?*\x00-\x1f]/g,'').trim().slice(0,80)+'.'+extension}
+function downloadName(extension){return (settings.projectName||'Reelo showreel').replace(/[<>:"/\\|?*\x00-\x1f]/g,'').trim().slice(0,80)+'.'+extension}
 function updateCompositionSize(bytes){$('#compositionSize').textContent='Comp size: '+(bytes/1024/1024).toFixed(1)+' MB'}
 function draw(c,w,h,t){renderComposition(c,w,h,t,screens,settings,backgroundAsset)}
-function updatePreview(){if(!screens.length)return;const [w,h]=outputSize();if(sizeError(w,h))return;const [pw,ph]=previewDimensions(w,h);if(canvas.width!==pw||canvas.height!==ph){canvas.width=pw;canvas.height=ph}draw(context,canvas.width,canvas.height,position);$('#currentTime').textContent=formatTime(position);$('#scrubber').value=position;updateRange($('#scrubber'));let index=Math.min(screens.length-1,Math.floor(position/settings.seconds));$('#previewStatus').textContent=`Screen ${index+1} of ${screens.length}`}
+function updatePreview(){
+  if(!screens.length)return;const [w,h]=outputSize();if(sizeError(w,h))return;
+  const well=$('.canvas-well'),aw=Math.max(1,well.clientWidth-8),ah=Math.max(1,well.clientHeight-8),scale=Math.min(1,aw/w,ah/h);
+  const [pw,ph]=previewDimensions(w,h,aw,ah,window.devicePixelRatio||1);
+  canvas.style.width=w*scale+'px';canvas.style.height=h*scale+'px';
+  if(canvas.width!==pw||canvas.height!==ph){canvas.width=pw;canvas.height=ph}
+  draw(context,pw,ph,position);$('#currentTime').textContent=formatTime(position);$('#scrubber').value=position;updateRange($('#scrubber'));
+  const index=Math.min(screens.length-1,Math.floor(position/settings.seconds));$('#previewStatus').textContent=`Screen ${index+1} of ${screens.length}`;
+}
+new ResizeObserver(()=>updatePreview()).observe($('.canvas-well'));
+window.addEventListener('resize',()=>updatePreview());
 function frame(now){if(lastFrame&&playing&&!rendering){position=Math.min(totalDuration(),position+(now-lastFrame)/1000);if(position>=totalDuration())setPlaying(false)}lastFrame=now;if(playing)updatePreview();requestAnimationFrame(frame)}
 function sync(){
   const has=screens.length>0,total=totalDuration(),[w,h]=outputSize();
@@ -65,14 +79,10 @@ function renderList(){
     const info=document.createElement('div');info.className='image-info';
     const name=document.createElement('span');name.className='image-name';name.textContent=screen.name;name.title=`${index+1}. ${screen.name}`;
     const size=document.createElement('span');size.className='image-size';size.textContent=`${screen.width} × ${screen.height}`;info.append(name,size);
-    const actions=document.createElement('div');actions.className='image-actions';
-    for(const [label,offset,cls] of [['Move earlier',-1,'move-up'],['Move later',1,'move-down']]){
-      const button=document.createElement('button');button.className=cls;button.dataset.action=cls;button.setAttribute('aria-label',`${label}: ${screen.name}`);button.append(assetIcon(offset===-1?'35-547-imgFrame4':'35-547-imgFrame2'));button.firstChild.style.transform='rotate(90deg)';button.disabled=index+offset<0||index+offset>=screens.length;button.onclick=()=>reorderScreen(index,index+offset,true);actions.append(button);
-    }
     const remove=document.createElement('button');remove.className='remove-image';remove.dataset.action='remove';remove.setAttribute('aria-label',`Remove ${screen.name}`);
     remove.append(assetIcon('35-3052-imgDefault','figma-icon default-remove'),assetIcon('35-3052-imgHover','figma-icon hover-remove'));
     remove.onclick=()=>{setPlaying(false);screens.splice(index,1);URL.revokeObjectURL(screen.url);ensureSizeSource();position=0;sync();save();$('#imageList').children[Math.min(index,screens.length-1)]?.querySelector('.remove-image')?.focus()};
-    row.append(handle,img,info,actions,remove);list.append(row);
+    row.append(handle,img,info,remove);list.append(row);
   });
   if(focusIndex!==undefined&&focusClass)list.children[focusIndex]?.querySelector(`[data-action="${focusClass}"]`)?.focus({preventScroll:true});
 }
@@ -147,17 +157,18 @@ function syncCompositionControls(width,height){
   const source=screens.find(screen=>screen.id===settings.sizeSourceId)||screens[0];
   $('#sizeModeLabel').textContent=settings.sizeMode==='custom'?'Custom canvas':source?'Matches selected source':'Uses your image’s original dimensions';
   const legacy=screens.some(screen=>screen.sourceVersion!==2);$('#legacyHint').hidden=!legacy;
-  const selectedMode=['light','dark'].includes(settings.background)?'solid':settings.background;
+  const selectedMode=['light','dark'].includes(settings.background)?'solid':settings.background==='gradient'?'image':settings.background;
   document.querySelectorAll('[data-background]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.background===selectedMode)));
-  $('#imageBackgroundOptions').hidden=selectedMode!=='image';$('#gradientOptions').hidden=selectedMode!=='gradient';$('#solidOptions').hidden=selectedMode!=='solid';
-  $('#backgroundColor').value=settings.background==='dark'?'#0e0e0e':settings.background==='light'?'#fefefe':settings.solidColor;$('#colorHex').textContent=$('#backgroundColor').value;
-  document.querySelectorAll('[data-color]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.color===$('#backgroundColor').value)));
-  document.querySelectorAll('[data-gradient]').forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.gradient)===settings.gradient)));
+  $('#transparentOptions').hidden=selectedMode!=='none';$('#imageBackgroundOptions').hidden=selectedMode!=='image';$('#solidOptions').hidden=selectedMode!=='solid';
+  const color=settings.background==='dark'?'#0e0e0e':settings.background==='light'?'#fefefe':settings.solidColor;
+  colorPicker.setColor(color);
+  document.querySelectorAll('[data-color]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.color.toLowerCase()===color.toLowerCase())));
+  document.querySelectorAll('[data-preset]').forEach(button=>button.setAttribute('aria-pressed',String(selectedMode==='image'&&Number(button.dataset.preset)===settings.backgroundPreset)));
+  $('[data-transparent]').setAttribute('aria-pressed',String(selectedMode==='none'));
+  $('#uploadBackground').setAttribute('aria-pressed',String(selectedMode==='image'&&Boolean(backgroundAsset)&&!Number.isInteger(settings.backgroundPreset)));
+  $('#pickColor').setAttribute('aria-pressed',String(selectedMode==='solid'&&![...document.querySelectorAll('[data-color]')].some(button=>button.dataset.color.toLowerCase()===color.toLowerCase())));
   document.querySelectorAll('[data-ratio]').forEach(button=>{const [rw,rh]=button.dataset.ratio.split(':').map(Number);button.setAttribute('aria-pressed',String(settings.sizeMode==='custom'&&Math.abs(width/height-rw/rh)<.002))});
-  $('#backgroundDetails').hidden=!backgroundAsset||selectedMode!=='image';
-  if(backgroundAsset){$('#backgroundThumb').src=backgroundAsset.url;$('#backgroundName').textContent=backgroundAsset.name}
-  $('#backgroundHint').hidden=settings.background!=='none';
-  $('#backgroundHint').textContent=settings.background==='none'?'Transparent export: GIF or PNG. Select a fill to export video.':settings.background==='image'?'Background fills the canvas and crops to fit. Screens stay fully visible.':'Fills transparent pixels and space around screens.';
+  $('#backgroundHint').hidden=true;
   $('#exportFormat').querySelector('option[value="video"]').disabled=settings.background==='none';
 }
 async function commitSize(){
@@ -169,17 +180,38 @@ async function commitSize(){
 async function uploadBackground(file){
   await ready;if(!file)return;
   if(!['image/png','image/jpeg','image/webp','image/svg+xml'].includes(file.type)||file.size>40*1024*1024){notify('Use a PNG, JPG, WebP or SVG background smaller than 40 MB.');return}
-  try{const asset=await decodeAsset(file,file.name);if(backgroundAsset)URL.revokeObjectURL(backgroundAsset.url);backgroundAsset=asset;settings.background='image';sync();save()}
+  try{const asset=await decodeAsset(file,file.name);if(backgroundAsset)URL.revokeObjectURL(backgroundAsset.url);backgroundAsset=asset;settings.backgroundPreset=null;settings.background='image';sync();save()}
   catch{notify('Could not open this background image. Please try another file.')}
   $('#backgroundFile').value='';
 }
 $('#canvasWidth').onchange=$('#canvasHeight').onchange=commitSize;
 $('#sizeSource').onchange=async e=>{const id=e.target.value;await ready;settings.sizeSourceId=id;settings.sizeMode='source';pendingSizeError='';sync();save()};
 $('#matchSource').onclick=async()=>{await ready;settings.sizeMode='source';pendingSizeError='';ensureSizeSource();sync();save()};
-document.querySelectorAll('[data-background]').forEach(button=>button.onclick=async()=>{await ready;const mode=button.dataset.background;settings.background=mode;if(mode==='none'&&settings.format==='video')settings.format='gif';sync();save()});
+document.querySelectorAll('[data-background]').forEach(button=>button.onclick=async()=>{
+  await ready;presetRequest++;settings.background=button.dataset.background;
+  if(settings.background==='none'&&settings.format==='video')settings.format='gif';
+  if(settings.background==='image'&&!backgroundAsset){await choosePreset([7,8,9,10,12,11].includes(settings.backgroundPreset)?settings.backgroundPreset:7);return}
+  sync();save();
+});
 $('#uploadBackground').onclick=()=>$('#backgroundFile').click();
-$('#backgroundFile').onchange=e=>{const file=e.target.files[0];e.target.value='';uploadBackground(file)};
-$('#removeBackground').onclick=()=>{if(backgroundAsset)URL.revokeObjectURL(backgroundAsset.url);backgroundAsset=null;if(settings.background==='image')settings.background='light';sync();save()};
+$('#backgroundFile').onchange=e=>{presetRequest++;const file=e.target.files[0];e.target.value='';uploadBackground(file)};
+$('[data-transparent]').onclick=async()=>{await ready;settings.background='none';if(settings.format==='video')settings.format='gif';sync();save()};
+async function presetAsset(index){
+  const formats=index===7?['avif','webp']:['webp'];
+  for(const format of formats){try{const response=await fetch(`assets/reelo/preset-${index}.${format}`);if(!response.ok)throw new Error('Background unavailable');return await decodeAsset(await response.blob(),`Background ${[7,8,9,10,12,11].indexOf(index)+1}`)}catch(error){if(format===formats.at(-1))throw error}}
+}
+async function choosePreset(index){
+  await ready;const request=++presetRequest;
+  try{const asset=await presetAsset(index);if(request!==presetRequest){URL.revokeObjectURL(asset.url);return}if(backgroundAsset)URL.revokeObjectURL(backgroundAsset.url);backgroundAsset=asset;settings.backgroundPreset=index;settings.background='image';sync();save()}
+  catch{notify('Could not load the background. Please try again.')}
+}
+document.querySelectorAll('[data-preset]').forEach(button=>button.onclick=()=>choosePreset(Number(button.dataset.preset)));
+function setSolidColor(color){
+  settings.background='solid';settings.solidColor=color;
+  colorPicker.setColor(color);document.querySelectorAll('[data-color]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.color.toLowerCase()===color.toLowerCase())));
+  $('#pickColor').setAttribute('aria-pressed',String(![...document.querySelectorAll('[data-color]')].some(button=>button.dataset.color.toLowerCase()===color.toLowerCase())));
+  updatePreview();save();
+}
 
 function ensureSizeSource(){if(!screens.some(screen=>screen.id===settings.sizeSourceId))settings.sizeSourceId=screens[0]?.id||null}
 async function init(){
@@ -194,14 +226,15 @@ async function init(){
       if(!['light','dark','none','image','solid','gradient'].includes(settings.background))settings.background='light';if(!['source','custom'].includes(settings.sizeMode))settings.sizeMode='source';
       settings.seconds=Math.max(.1,Math.min(10,Number(settings.seconds)||1.5));settings.fade=Math.max(.02,Math.min(3,settings.seconds*.8,Number(settings.fade)||.5));
       for(const entry of stored.screens.slice(0,MAX_IMAGES)){try{const asset=await decodeAsset(entry.blob,entry.name,entry.id);asset.sourceVersion=entry.sourceVersion||1;screens.push(asset)}catch{}}
+      if(settings.background==='image'&&Number.isInteger(settings.backgroundPreset)&&[7,8,9,10,12,11].includes(settings.backgroundPreset)){try{backgroundAsset=await presetAsset(settings.backgroundPreset)}catch{settings.background='none'}}
       if(stored.background){try{backgroundAsset=await decodeAsset(stored.background.blob,stored.background.name)}catch{settings.background='light'}}
-      if(settings.background==='image'&&!backgroundAsset)settings.background='light';if(settings.background==='none'&&settings.format==='video')settings.format='gif';
+      if(settings.background==='image'&&!backgroundAsset)settings.background='none';if(settings.background==='none'&&settings.format==='video')settings.format='gif';
       if(settings.orderMode==='name')screens=sortByFilename(screens);ensureSizeSource();
     }
     sync();
   }catch{$('#saveStatus').textContent='Device storage unavailable · this session only'}
 }
-function save(){clearTimeout(saveTimer);$('#saveStatus').textContent='Saving on this device…';saveTimer=setTimeout(()=>{if(!db){$('#saveStatus').textContent='This session only';return}try{const tx=db.transaction('projects','readwrite');tx.objectStore('projects').put({version:2,settings,background:backgroundAsset?{name:backgroundAsset.name,blob:backgroundAsset.blob}:null,screens:screens.map(({id,name,width,height,blob,sourceVersion})=>({id,name,width,height,blob,sourceVersion}))},'current');tx.oncomplete=()=>$('#saveStatus').textContent='Saved automatically on this device';tx.onerror=()=>{$('#saveStatus').textContent='Could not save · keep this tab open';notify('Device storage is full. You can still create and download your video.')}}catch{$('#saveStatus').textContent='Could not save · keep this tab open'}},200)}
+function save(){clearTimeout(saveTimer);$('#saveStatus').textContent='Saving on this device…';saveTimer=setTimeout(()=>{if(!db){$('#saveStatus').textContent='This session only';return}try{const tx=db.transaction('projects','readwrite');tx.objectStore('projects').put({version:2,settings,background:backgroundAsset&&settings.backgroundPreset===null?{name:backgroundAsset.name,blob:backgroundAsset.blob}:null,screens:screens.map(({id,name,width,height,blob,sourceVersion})=>({id,name,width,height,blob,sourceVersion}))},'current');tx.oncomplete=()=>$('#saveStatus').textContent='Saved automatically on this device';tx.onerror=()=>{$('#saveStatus').textContent='Could not save · keep this tab open';notify('Device storage is full. You can still create and download your video.')}}catch{$('#saveStatus').textContent='Could not save · keep this tab open'}},200)}
 const ready=init();requestAnimationFrame(frame);
 $('#addSources').onclick=$('#upload').onclick=$('#emptyUpload').onclick=()=>$('#files').click();$('#files').onchange=e=>acceptFiles(e.target.files);for(const area of [$('.source-panel'),$('#dropStage')]){area.ondragover=e=>{e.preventDefault();area.classList.add('dragover')};area.ondragleave=()=>area.classList.remove('dragover');area.ondrop=e=>{e.preventDefault();area.classList.remove('dragover');if(!rendering)acceptFiles(e.dataTransfer.files)}}
 $('#clearAll').onclick=()=>{screens.forEach(s=>URL.revokeObjectURL(s.url));screens=[];settings.orderMode='name';settings.sizeSourceId=null;pendingSizeError='';position=0;setError('');sync();save()};$('#play').onclick=()=>{if(position>=totalDuration())position=0;setPlaying(!playing);updatePreview()};$('#restart').onclick=()=>{position=0;setPlaying(true);updatePreview()};$('#scrubber').oninput=e=>{position=Number(e.target.value);setPlaying(false);updatePreview()};function timingChanged(){position=0;setPlaying(false);settings.fade=Math.min(settings.fade,settings.seconds*.8);sync();save()}
@@ -212,7 +245,7 @@ $('#exportFormat').onchange=async e=>{const value=e.target.value;await ready;set
 $('#screenDurationRange').oninput=async e=>{const v=Number(e.target.value);await ready;settings.seconds=v;timingChanged()};
 $('#resetTiming').onclick=async()=>{await ready;settings.seconds=DEFAULTS.seconds;timingChanged()};
 $('#resetTransition').onclick=async()=>{await ready;settings.feel='soft';settings.fade=Math.min(.5,settings.seconds*.8);sync();save()};
-$('#resetSettings').onclick=async()=>{await ready;settings={...DEFAULTS,orderMode:settings.orderMode,sizeSourceId:screens[0]?.id||null};pendingSizeError='';position=0;setPlaying(false);sync();save();notify('Settings reset. Your screens are kept.')};
+$('#resetSettings').onclick=async()=>{await ready;presetRequest++;if(backgroundAsset)URL.revokeObjectURL(backgroundAsset.url);backgroundAsset=null;settings={...DEFAULTS,orderMode:settings.orderMode,sizeSourceId:screens[0]?.id||null};pendingSizeError='';position=0;setPlaying(false);sync();save();notify('Settings reset. Your screens are kept.')};
 $('#guideButton').onclick=()=>$('#guide').showModal();$('#guide .close').onclick=()=>$('#guide').close();
 // MediaRecorder streams WebM without a Duration entry. Add it so players can seek
 // and show the correct length. Segment size in streamed WebM is unspecified.
@@ -280,9 +313,7 @@ document.querySelectorAll('[data-ratio]').forEach(button=>button.onclick=async()
   const error=sizeError(width,height);if(error){notify(error);return}
   settings.sizeMode='custom';settings.width=width;settings.height=height;pendingSizeError='';sync();save();
 });
-document.querySelectorAll('[data-color]').forEach(button=>button.onclick=async()=>{await ready;settings.background='solid';settings.solidColor=button.dataset.color;sync();save()});
-$('#backgroundColor').oninput=async event=>{const color=event.target.value;await ready;settings.background='solid';settings.solidColor=color;sync();save()};
-GRADIENTS.forEach((gradient,index)=>{const button=document.createElement('button');button.dataset.gradient=index;button.style.background=`linear-gradient(135deg,${gradient.join(',')})`;button.setAttribute('aria-label',`Gradient ${index+1}`);button.onclick=async()=>{await ready;settings.background='gradient';settings.gradient=index;sync();save()};$('#gradientOptions').append(button)});
+document.querySelectorAll('[data-color]').forEach(button=>button.onclick=async()=>{await ready;settings.background='solid';setSolidColor(button.dataset.color);sync();save()});
 async function exportPng(){
   if(!screens.length||rendering)return;setPlaying(false);rendering=true;
   try{
@@ -292,7 +323,7 @@ async function exportPng(){
     $('#download').href=outputURL;$('#download').download=downloadName('png');$('#download').textContent=`Download PNG · ${(blob.size/1024/1024).toFixed(1)} MB`;
     $('#renderTitle').textContent='Your PNG is ready.';$('#renderDescription').textContent=`Current preview frame · ${w} × ${h}`;
     $('#renderProgress').value=100;$('#renderPercent').textContent='100%';$('#cancelRender').hidden=true;$('#renderedVideo').hidden=true;$('#renderedVideo').pause();
-    $('#download').hidden=$('#backToEditor').hidden=$('#renderedGif').hidden=false;$('#renderedGif').alt='Exported composition frame';$('#renderedGif').alt='Rendered animated GIF showreel';$('#renderedGif').src=outputURL;
+    $('#download').hidden=$('#backToEditor').hidden=$('#renderedGif').hidden=false;$('#renderedGif').alt='Exported composition frame';$('#renderedGif').src=outputURL;
     $('#backToEditor').onclick=()=>$('#renderDialog').close();$('#renderDialog').oncancel=null;$('#renderDialog').showModal();
   }catch(error){console.error(error);notify('Could not export the PNG. Please try again.')}
   finally{rendering=false}

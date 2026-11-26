@@ -1,0 +1,72 @@
+{
+  "source": "Figma preset originals; supplied Presets.zip path was unavailable",
+  "originalBytes": 40937142,
+  "primaryRenderBytes": 5414895,
+  "thumbnailBytes": 10266,
+  "reductionPercent": 86.8,
+  "presets": [
+    {
+      "id": 7,
+      "width": 2880,
+      "height": 2048,
+      "quality": 90,
+      "psnr": 38.71,
+      "originalBytes": 9235708,
+      "optimizedBytes": 966039,
+      "thumbnailBytes": 2996,
+      "format": "avif",
+      "fallbackBytes": 2509720,
+      "fallbackPsnr": 37.34
+    },
+    {
+      "id": 8,
+      "width": 2880,
+      "height": 2048,
+      "quality": 94,
+      "psnr": 41.93,
+      "originalBytes": 5793118,
+      "optimizedBytes": 1244534,
+      "thumbnailBytes": 1370
+    },
+    {
+      "id": 9,
+      "width": 2880,
+      "height": 2048,
+      "quality": 94,
+      "psnr": 42.59,
+      "originalBytes": 10607793,
+      "optimizedBytes": 1909360,
+      "thumbnailBytes": 2854
+    },
+    {
+      "id": 10,
+      "width": 3072,
+      "height": 2050,
+      "quality": 94,
+      "psnr": 47.96,
+      "originalBytes": 3296940,
+      "optimizedBytes": 157116,
+      "thumbnailBytes": 990
+    },
+    {
+      "id": 12,
+      "width": 3072,
+      "height": 2048,
+      "quality": 94,
+      "psnr": 43.67,
+      "originalBytes": 8323238,
+      "optimizedBytes": 983154,
+      "thumbnailBytes": 1168
+    },
+    {
+      "id": 11,
+      "width": 3072,
+      "height": 2048,
+      "quality": 94,
+      "psnr": 48.24,
+      "originalBytes": 3680345,
+      "optimizedBytes": 154692,
+      "thumbnailBytes": 888
+    }
+  ]
+}

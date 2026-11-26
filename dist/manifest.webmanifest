@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "Folio \u2014 Showreel studio",
-  "short_name": "Folio",
+  "name": "Reelo \u2014 Showreel studio",
+  "short_name": "Reelo",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -9,7 +9,7 @@
   "theme_color": "#000000",
   "icons": [
     {
-      "src": "assets/app-icon.png",
+      "src": "assets/reelo-app-icon.png",
       "sizes": "800x800",
       "type": "image/png",
       "purpose": "any"

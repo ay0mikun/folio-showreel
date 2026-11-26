@@ -49,3 +49,9 @@ test('padded portrait and landscape sources remain within the canvas',async()=>{
     assert.ok(Math.abs(rect.width/rect.height-sw/sh)<1e-10);
   }
 });
+
+test('Retina preview uses the rendered artboard size and display pixel density',()=>{
+  assert.deepEqual(previewDimensions(2880,2081,1000,650,2),[1799,1300]);
+  const [w,h]=previewDimensions(6000,4000,1800,1200,2);assert.ok(w>1280&&h>900);assert.ok(Math.abs(w/h-1.5)<.002);
+  assert.deepEqual(previewDimensions(600,400,1000,800,2),[600,400]);
+});
