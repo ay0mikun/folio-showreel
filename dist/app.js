@@ -6,7 +6,7 @@ import {openFromTrigger} from './trigger-motion.mjs';
 import {previewFrameKey} from './preview-cache.mjs';
 import {createExportMotion} from './export-motion.mjs?v=6c8f9d2f73';
 import {createFeedbackPrompt} from './feedback.mjs';
-import {mountColorPicker} from './color-picker.mjs?v=253716f844';
+import {mountColorPicker} from './color-picker.mjs?v=e9540a853b';
 import {gifFramePlan} from './gif-plan.mjs';
 import {sortByFilename,moveSource} from './source-order.mjs';
 import {resolveSize,sizeError,previewDimensions,renderComposition,GRADIENTS} from './composition.mjs?v=306888d011';
@@ -99,7 +99,7 @@ function syncTimingControls(){
   fitNumberInput($('#screenDuration'));fitNumberInput($('#totalDuration'));
   const [w,h]=outputSize();$('#exportMeta').textContent=has?`${total.toFixed(1)} seconds · ${w} × ${h} · ${settings.format.toUpperCase()}`:'Add a screen to get started';
 }
-const lightweightTarget=target=>target.closest?.('.color-field,.hue-slider,#paddingRange,#radiusRange,#scrubber');
+const lightweightTarget=target=>target.closest?.('.color-field,.hue-slider,.alpha-slider,#paddingRange,#radiusRange,#scrubber');
 function endPreviewInteraction(){if(!interactivePreview)return;interactivePreview=false;previewPaintKey='';schedulePreview()}
 document.addEventListener('pointerdown',event=>{if(lightweightTarget(event.target)){interactivePreview=true;schedulePreview()}},true);
 window.addEventListener('pointerup',endPreviewInteraction,{passive:true});window.addEventListener('pointercancel',endPreviewInteraction,{passive:true});window.addEventListener('blur',endPreviewInteraction);
@@ -257,7 +257,7 @@ async function init(){
     if(stored){
       settings={...DEFAULTS,...stored.settings};
       settings.padding=Math.max(0,Math.min(80,Number(settings.padding)||0));settings.radius=Math.max(0,Math.min(100,Number(settings.radius)||0));settings.gradient=Math.max(0,Math.min(GRADIENTS.length-1,Math.round(Number(settings.gradient)||0)));
-      if(!/^#[0-9a-f]{6}$/i.test(settings.solidColor))settings.solidColor='#fefefe';settings.projectName=String(settings.projectName||'Name of file').slice(0,80);
+      if(!/^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(settings.solidColor))settings.solidColor='#fefefe';settings.projectName=String(settings.projectName||'Name of file').slice(0,80);
       if(!['soft','stiff'].includes(settings.feel))settings.feel='soft';if(!['video','gif'].includes(settings.format))settings.format='video';if(!['name','custom'].includes(settings.orderMode))settings.orderMode='name';
       if(!['light','dark','none','image','solid','gradient'].includes(settings.background))settings.background='light';if(!['source','custom'].includes(settings.sizeMode))settings.sizeMode='source';
       settings.seconds=Math.max(.1,Math.min(10,Number(settings.seconds)||1.5));settings.fade=Math.max(.02,Math.min(3,settings.seconds*.8,Number(settings.fade)||.5));
