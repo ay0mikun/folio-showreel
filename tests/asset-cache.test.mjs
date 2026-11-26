@@ -1,0 +1,7 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createAssetCache} from '../dist/asset-cache.mjs';
+test('concurrent requests share a single asset load',async()=>{let loads=0;const cache=createAssetCache({load:async key=>{loads++;return {key}}});const [a,b]=await Promise.all([cache.get(1),cache.get(1)]);assert.equal(a,b);assert.equal(loads,1)});
+test('least recently used decoded assets are released at the cache bound',async()=>{const freed=[];let loads=0;const cache=createAssetCache({load:async key=>{loads++;return {key}},dispose:asset=>freed.push(asset.key)});await cache.get(1);await cache.get(2);await cache.get(1);await cache.get(3);assert.deepEqual(freed,[2]);await cache.get(2);assert.equal(loads,4)});
+test('active assets remain usable until released by their owner',async()=>{const freed=[];let active=1;const cache=createAssetCache({load:async key=>({key}),retain:asset=>asset.key===active,dispose:asset=>freed.push(asset.key)});await cache.get(1);await cache.get(2);await cache.get(3);assert.deepEqual(freed,[2]);active=3;await cache.get(4);assert.deepEqual(freed,[2,1])});
+test('failed requests can retry rather than caching a rejection forever',async()=>{let attempt=0;const cache=createAssetCache({load:async()=>{if(++attempt===1)throw Error('offline');return {ok:true}}});await assert.rejects(cache.get('image'));assert.deepEqual(await cache.get('image'),{ok:true})});
