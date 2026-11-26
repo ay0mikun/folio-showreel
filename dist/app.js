@@ -1,3 +1,4 @@
+import {previewFrameKey} from './preview-cache.mjs';
 import {createExportMotion} from './export-motion.mjs';
 import {createFeedbackPrompt} from './feedback.mjs';
 import {mountColorPicker} from './color-picker.mjs?v=07e3a5ca3d';
@@ -13,25 +14,21 @@ const FPS=30,MAX_IMAGES=12;
 const DEFAULTS={seconds:.6,fade:.48,feel:'soft',format:'gif',orderMode:'name',background:'none',solidColor:'#fefefe',gradient:0,backgroundPreset:null,padding:8,radius:0,projectName:'Name of file',sizeMode:'source',width:null,height:null,sizeSourceId:null};
 let screens=[],settings={...DEFAULTS},backgroundAsset=null,pendingSizeError='',playing=false,position=0,lastFrame=0,db=null,saveTimer,outputURL=null,rendering=false,cancelRender=null;
 const canvas=$('#preview'),context=canvas.getContext('2d',{alpha:true});
-const numberMeasure=document.createElement('span');
-numberMeasure.setAttribute('aria-hidden','true');numberMeasure.className='number-width-measure';document.body.append(numberMeasure);
 function fitNumberInput(input){
-  const style=getComputedStyle(input);
-  for(const property of ['fontFamily','fontSize','fontWeight','fontStyle','fontStretch','fontVariantNumeric','letterSpacing'])numberMeasure.style[property]=style[property];
-  numberMeasure.textContent=input.value||'0';
-  const chrome=parseFloat(style.paddingLeft)+parseFloat(style.paddingRight)+parseFloat(style.borderLeftWidth)+parseFloat(style.borderRightWidth);
-  input.style.width=Math.ceil(numberMeasure.getBoundingClientRect().width+chrome+2)+'px';
+  // All numerical inputs use the same monospace font; ch follows its actual glyph width.
+  input.style.width=`calc(${Math.max(1,(input.value||'0').length)}ch + 14px)`;
 }
 for(const input of document.querySelectorAll('.number-unit input'))input.addEventListener('input',()=>fitNumberInput(input));
 const colorPicker=mountColorPicker($('#pickColor'),$('#colorPicker'),setSolidColor);
 let presetRequest=0,presetLoading=false;
 const presetCache=new Map();
+let previewFrameID=null,lastPreviewTick=0,previewPaintKey='',previewBox=null,listSignature='';
 const totalDuration=()=>screens.length*settings.seconds;
 function outputSize(){return resolveSize(screens,settings)}
 function formatTime(t){const tenths=Math.round(t*10),minutes=Math.floor(tenths/600),seconds=(tenths%600)/10;return `${String(minutes).padStart(2,'0')}:${seconds.toFixed(1).padStart(4,'0')}`}
 function notify(message){$('#toast').textContent=message;$('#toast').classList.add('visible');clearTimeout(notify.timer);notify.timer=setTimeout(()=>$('#toast').classList.remove('visible'),4500)}
 function setError(message){$('#uploadError').textContent=message;$('#uploadError').hidden=!message}
-function setPlaying(value){playing=value;if(value)$('#play').innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pause preview-icon" aria-hidden="true"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></svg>';else $('#play').replaceChildren(assetIcon('35-1990-imgFrame2'));$('#play').setAttribute('aria-label',value?'Pause preview':'Play preview')}
+function setPlaying(value){playing=value;cancelAnimationFrame(previewFrameID);previewFrameID=null;lastFrame=0;lastPreviewTick=0;if(value&&!document.hidden)previewFrameID=requestAnimationFrame(frame);if(value)$('#play').innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pause preview-icon" aria-hidden="true"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></svg>';else $('#play').replaceChildren(assetIcon('35-1990-imgFrame2'));$('#play').setAttribute('aria-label',value?'Pause preview':'Play preview')}
 const ICONS={'35-1990-imgFrame2':'play','35-1990-imgFrame3':'restart','35-547-imgFrame1':'35-547-imgFrame2','35-3052-imgDefault':'remove','35-3052-imgHover':'remove-hover'};
 function assetIcon(name,className='figma-icon'){const image=document.createElement('img');image.src=`assets/reelo/${ICONS[name]||name}.svg`;image.alt='';image.className=className;image.draggable=false;return image}
 function updateRange(input){const percentage=(Number(input.value)-Number(input.min))/(Number(input.max)-Number(input.min))*100;input.style.setProperty('--progress',Math.max(0,Math.min(100,percentage))+'%');if(input.id==='scrubber')input.parentElement.style.setProperty('--progress',Math.max(0,Math.min(100,percentage))+'%')}
@@ -40,16 +37,27 @@ function updateCompositionSize(bytes){$('#compositionSize').textContent='Comp si
 function draw(c,w,h,t){renderComposition(c,w,h,t,screens,settings,backgroundAsset)}
 function updatePreview(){
   if(!screens.length)return;const [w,h]=outputSize();if(sizeError(w,h))return;
-  const well=$('.canvas-well'),aw=Math.max(1,well.clientWidth-8),ah=Math.max(1,well.clientHeight-8),scale=Math.min(1,aw/w,ah/h);
+  if(!previewBox){const well=$('.canvas-well');previewBox=[Math.max(1,well.clientWidth-8),Math.max(1,well.clientHeight-8)]}
+  const [aw,ah]=previewBox,scale=Math.min(1,aw/w,ah/h);
   const [pw,ph]=previewDimensions(w,h,aw,ah,window.devicePixelRatio||1);
   canvas.style.width=w*scale+'px';canvas.style.height=h*scale+'px';
-  if(canvas.width!==pw||canvas.height!==ph){canvas.width=pw;canvas.height=ph}
-  draw(context,pw,ph,position);$('#currentTime').textContent=formatTime(position);$('#scrubber').value=position;updateRange($('#scrubber'));
-  const index=Math.min(screens.length-1,Math.floor(position/settings.seconds));$('#previewStatus').textContent=`Screen ${index+1} of ${screens.length}`;
+  if(canvas.width!==pw||canvas.height!==ph){canvas.width=pw;canvas.height=ph;previewPaintKey=''}
+  const index=Math.min(screens.length-1,Math.floor(position/settings.seconds));
+  const key=previewFrameKey(pw,ph,position,screens,settings,backgroundAsset);
+  if(key!==previewPaintKey){draw(context,pw,ph,position);previewPaintKey=key}
+  const timeLabel=formatTime(position);if($('#currentTime').textContent!==timeLabel)$('#currentTime').textContent=timeLabel;$('#scrubber').value=position;updateRange($('#scrubber'));
+  const status=`Screen ${index+1} of ${screens.length}`;if($('#previewStatus').textContent!==status)$('#previewStatus').textContent=status;
 }
-new ResizeObserver(()=>updatePreview()).observe($('.canvas-well'));
-window.addEventListener('resize',()=>updatePreview());
-function frame(now){if(lastFrame&&playing&&!rendering){position=Math.min(totalDuration(),position+(now-lastFrame)/1000);if(position>=totalDuration())setPlaying(false)}lastFrame=now;if(playing)updatePreview();requestAnimationFrame(frame)}
+new ResizeObserver(([entry])=>{previewBox=[Math.max(1,entry.contentRect.width),Math.max(1,entry.contentRect.height)];previewPaintKey='';updatePreview()}).observe($('.canvas-well'));
+window.addEventListener('resize',()=>{previewBox=null;updatePreview()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&playing)setPlaying(false)});
+function frame(now){
+  previewFrameID=null;if(!playing||rendering||document.hidden)return;
+  if(lastFrame)position=Math.min(totalDuration(),position+(now-lastFrame)/1000);lastFrame=now;
+  if(now-lastPreviewTick>=1000/FPS||position>=totalDuration()){updatePreview();lastPreviewTick=now}
+  if(position>=totalDuration()){setPlaying(false);return}
+  previewFrameID=requestAnimationFrame(frame);
+}
 function sync(){
   const has=screens.length>0,total=totalDuration(),[w,h]=outputSize();
   document.body.classList.toggle('has-screens',has);
@@ -82,6 +90,7 @@ function sync(){
   updatePreview();renderList();
 }
 function renderList(){
+  const signature=screens.map(screen=>screen.id).join('|');if(signature===listSignature)return;listSignature=signature;
   const list=$('#imageList'),focused=document.activeElement.closest?.('.image-item'),focusIndex=focused?.dataset.index,focusClass=document.activeElement.dataset.action;
   list.replaceChildren();
   screens.forEach((screen,index)=>{
@@ -264,7 +273,7 @@ async function init(){
   }catch{$('#saveStatus').textContent='Device storage unavailable · this session only'}
 }
 function save(){clearTimeout(saveTimer);$('#saveStatus').textContent='Saving on this device…';saveTimer=setTimeout(()=>{if(!db){$('#saveStatus').textContent='This session only';return}try{const tx=db.transaction('projects','readwrite');tx.objectStore('projects').put({version:2,settings,background:backgroundAsset&&settings.backgroundPreset===null?{name:backgroundAsset.name,blob:backgroundAsset.blob}:null,screens:screens.map(({id,name,width,height,blob,sourceVersion})=>({id,name,width,height,blob,sourceVersion}))},'current');tx.oncomplete=()=>$('#saveStatus').textContent='Saved automatically on this device';tx.onerror=()=>{$('#saveStatus').textContent='Could not save · keep this tab open';notify('Device storage is full. You can still create and download your video.')}}catch{$('#saveStatus').textContent='Could not save · keep this tab open'}},200)}
-const ready=init();document.fonts.ready.then(()=>ready).then(()=>sync());requestAnimationFrame(frame);
+const ready=init();document.fonts.ready.then(()=>ready).then(()=>sync());
 $('#addSources').onclick=$('#upload').onclick=$('#emptyUpload').onclick=()=>$('#files').click();$('#files').onchange=e=>acceptFiles(e.target.files);for(const area of [$('.source-panel'),$('#dropStage')]){area.ondragover=e=>{e.preventDefault();area.classList.add('dragover')};area.ondragleave=()=>area.classList.remove('dragover');area.ondrop=e=>{e.preventDefault();area.classList.remove('dragover');if(!rendering)acceptFiles(e.dataTransfer.files)}}
 $('#clearAll').onclick=()=>{screens.forEach(s=>URL.revokeObjectURL(s.url));screens=[];settings.orderMode='name';settings.sizeSourceId=null;pendingSizeError='';position=0;setError('');sync();save()};$('#play').onclick=()=>{if(position>=totalDuration())position=0;setPlaying(!playing);updatePreview()};$('#restart').onclick=()=>{position=0;setPlaying(true);updatePreview()};$('#scrubber').oninput=e=>{position=Number(e.target.value);setPlaying(false);updatePreview()};function timingChanged(){position=0;setPlaying(false);settings.fade=Math.min(settings.fade,settings.seconds*.8);sync();save()}
 $('#screenDuration').onchange=async e=>{const v=Number(e.target.value);await ready;settings.seconds=Math.min(10,Math.max(.1,Number.isFinite(v)&&v>0?v:1.5));timingChanged()};
@@ -307,7 +316,7 @@ async function addWebmDuration(blob,duration){const bytes=new Uint8Array(await b
 function encodeSize(value,n){if(value>=2**(7*n)-1)return null;const b=new Uint8Array(n);let v=value;for(let i=n-1;i>=0;i--){b[i]=v%256;v=Math.floor(v/256)}b[0]|=1<<(8-n);return b}
 let offset=0,segment=null;while(offset<bytes.length){const id=read(offset,true);if(!id)break;const size=read(offset+id.n);if(!size)break;const start=offset+id.n+size.n;if(id.value===0x18538067){segment={start,size,offset:offset+id.n};break}offset=start+size.value}if(!segment)return blob;offset=segment.start;while(offset<bytes.length){const id=read(offset,true),size=id&&read(offset+id.n);if(!id||!size)break;const start=offset+id.n+size.n,end=start+size.value;if(end>bytes.length)break;if(id.value===0x1549a966){let scale=1000000,child=start;while(child<end){const cid=read(child,true),cs=cid&&read(child+cid.n);if(!cid||!cs)return blob;const pos=child+cid.n+cs.n;if(cid.value===0x4489)return blob;if(cid.value===0x2ad7b1){scale=0;for(let k=0;k<cs.value;k++)scale=scale*256+bytes[pos+k]}child=pos+cs.value}const newSize=encodeSize(size.value+11,size.n);if(!newSize)return blob;const durationEntry=new Uint8Array(11);durationEntry.set([0x44,0x89,0x88]);new DataView(durationEntry.buffer).setFloat64(3,duration*1e9/scale,false);const result=new Uint8Array(bytes.length+11);result.set(bytes.slice(0,offset+id.n));result.set(newSize,offset+id.n);result.set(bytes.slice(start,end),start);result.set(durationEntry,end);result.set(bytes.slice(end),end+11);return new Blob([result],{type:blob.type})}offset=end}return blob}
 async function exportVideo(){await ready;if(!screens.length||rendering)return;const [w,h]=outputSize();if(typeof MediaRecorder==='undefined'||!canvas.captureStream){notify('Video export is not supported in this browser. Please use a recent Chrome, Edge, or Safari.');return}const mime=(w%2||h%2?['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']:['video/mp4;codecs=avc1.420033','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']).find(m=>MediaRecorder.isTypeSupported(m));if(!mime){notify('This browser cannot encode video. Please try a recent Chrome or Edge.');return}prepareExportDialog();let recorder,stream,frameID,cancelled=false,hidden=false;const dialog=$('#renderDialog'),duration=totalDuration();setPlaying(false);position=0;updatePreview();rendering=true;document.body.classList.add('rendering');$('#renderTitle').textContent='Creating your reel...';$('#renderDescription').textContent='Keep this tab open while your video renders.';$('#renderProgress').value=0;$('#renderPercent').textContent='0%';$('#cancelRender').hidden=false;$('#download').hidden=$('#backToEditor').hidden=$('#renderedVideo').hidden=$('#renderedGif').hidden=true;$('#renderedGif').removeAttribute('src');$('#renderedVideo').pause();$('#renderedVideo').removeAttribute('src');dialog.showModal();cancelRender=()=>{cancelled=true;cancelAnimationFrame(frameID);if(recorder&&recorder.state!=='inactive')recorder.stop()};$('#cancelRender').onclick=()=>cancelRender?.();dialog.oncancel=e=>{e.preventDefault();cancelRender?.()};const onVisibility=()=>{if(document.hidden){hidden=true;cancelRender?.()}};document.addEventListener('visibilitychange',onVisibility);
-try{const out=document.createElement('canvas');out.width=w;out.height=h;const c=out.getContext('2d',{alpha:false});if(!c||out.width!==w||out.height!==h)throw new Error('Unsupported canvas size');draw(c,w,h,0);stream=out.captureStream(FPS);const bitrate=Math.min(60_000_000,Math.max(10_000_000,Math.round(w*h*FPS*.18)));recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:bitrate});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};const stopped=new Promise((resolve,reject)=>{recorder.onstop=resolve;recorder.onerror=e=>reject(e.error||new Error('Video encoder error'))});recorder.start(200);const start=performance.now();const tick=now=>{const t=Math.min(duration,(now-start)/1000);draw(c,w,h,Math.min(t,duration-.001));position=t;updatePreview();const pct=Math.min(100,Math.round(t/duration*100));$('#renderProgress').value=pct;$('#renderPercent').textContent=pct+'%';if(t<duration&&!cancelled)frameID=requestAnimationFrame(tick);else if(recorder.state!=='inactive')recorder.stop()};frameID=requestAnimationFrame(tick);await stopped;if(cancelled){dialog.close();notify(hidden?'Rendering stopped because the tab was hidden. Keep it visible and try again.':'Video creation cancelled.');return}if(!chunks.length)throw new Error('No video frames');let blob=new Blob(chunks,{type:recorder.mimeType||mime});if(mime.includes('webm')){try{blob=await addWebmDuration(blob,duration)}catch{}}if(outputURL)URL.revokeObjectURL(outputURL);outputURL=URL.createObjectURL(blob);const ext=mime.includes('mp4')?'mp4':'webm';exportStartGeometry=exportMotion.capture();updateCompositionSize(blob.size);$('#download').href=outputURL;$('#download').download=downloadName(ext);$('#download').textContent=`Download ${ext.toUpperCase()} · ${(blob.size/1024/1024).toFixed(1)} MB`;$('#renderTitle').textContent='Your work, ready to show.';$('#renderDescription').textContent=`${screens.length} screen${screens.length===1?'':'s'} · ${duration.toFixed(1)} seconds · ${w} × ${h} · 30 fps`;$('#renderPercent').textContent='100%';$('#renderProgress').value=100;$('#download').hidden=$('#backToEditor').hidden=$('#renderedVideo').hidden=false;$('#renderedVideo').src=outputURL;$('#backToEditor').onclick=()=>{dialog.close();$('#renderedVideo').pause()};dialog.oncancel=null;finishExportDialog(blob);
+try{const out=document.createElement('canvas');out.width=w;out.height=h;const c=out.getContext('2d',{alpha:false});if(!c||out.width!==w||out.height!==h)throw new Error('Unsupported canvas size');draw(c,w,h,0);stream=out.captureStream(FPS);const bitrate=Math.min(60_000_000,Math.max(10_000_000,Math.round(w*h*FPS*.18)));recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:bitrate});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};const stopped=new Promise((resolve,reject)=>{recorder.onstop=resolve;recorder.onerror=e=>reject(e.error||new Error('Video encoder error'))});recorder.start(200);const start=performance.now();let lastEncodedAt=start-1000/FPS;const tick=now=>{const t=Math.min(duration,(now-start)/1000);if(now-lastEncodedAt<1000/FPS&&t<duration&&!cancelled){frameID=requestAnimationFrame(tick);return}lastEncodedAt=now;draw(c,w,h,Math.min(t,duration-.001));position=t;const pct=Math.min(100,Math.round(t/duration*100));$('#renderProgress').value=pct;$('#renderPercent').textContent=pct+'%';if(t<duration&&!cancelled)frameID=requestAnimationFrame(tick);else if(recorder.state!=='inactive')recorder.stop()};frameID=requestAnimationFrame(tick);await stopped;if(cancelled){dialog.close();notify(hidden?'Rendering stopped because the tab was hidden. Keep it visible and try again.':'Video creation cancelled.');return}if(!chunks.length)throw new Error('No video frames');let blob=new Blob(chunks,{type:recorder.mimeType||mime});if(mime.includes('webm')){try{blob=await addWebmDuration(blob,duration)}catch{}}if(outputURL)URL.revokeObjectURL(outputURL);outputURL=URL.createObjectURL(blob);const ext=mime.includes('mp4')?'mp4':'webm';exportStartGeometry=exportMotion.capture();updateCompositionSize(blob.size);$('#download').href=outputURL;$('#download').download=downloadName(ext);$('#download').textContent=`Download ${ext.toUpperCase()} · ${(blob.size/1024/1024).toFixed(1)} MB`;$('#renderTitle').textContent='Your work, ready to show.';$('#renderDescription').textContent=`${screens.length} screen${screens.length===1?'':'s'} · ${duration.toFixed(1)} seconds · ${w} × ${h} · 30 fps`;$('#renderPercent').textContent='100%';$('#renderProgress').value=100;$('#download').hidden=$('#backToEditor').hidden=$('#renderedVideo').hidden=false;$('#renderedVideo').src=outputURL;$('#backToEditor').onclick=()=>{dialog.close();$('#renderedVideo').pause()};dialog.oncancel=null;finishExportDialog(blob);
 }catch(error){console.error(error);dialog.close();notify('Could not finish the video. Please try again in a recent Chrome or Edge.')}finally{cancelAnimationFrame(frameID);document.removeEventListener('visibilitychange',onVisibility);stream?.getTracks().forEach(track=>track.stop());cancelRender=null;rendering=false;document.body.classList.remove('rendering')}};
 
 async function exportGif(){
@@ -337,7 +346,7 @@ async function exportGif(){
       const frame=plan[i];draw(c,w,h,frame.time);
       const rgba=c.getImageData(0,0,w,h).data;
       await send({type:'frame',rgba:rgba.buffer,width:w,height:h,delay:frame.delay},[rgba.buffer]);
-      position=frame.time;updatePreview();const percent=Math.round((i+1)/plan.length*99);
+      position=frame.time;const percent=Math.round((i+1)/plan.length*99);
       $('#renderProgress').value=percent;$('#renderPercent').textContent=percent+'%';
     }
     const result=await send({type:'finish'});if(cancelled)return;

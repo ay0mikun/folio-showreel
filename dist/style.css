@@ -56,5 +56,20 @@ button{appearance:none;-webkit-appearance:none}.swatch-strip>button[aria-pressed
 @media(prefers-reduced-motion:reduce){.cancel-progress{transition:none}}
 
 /* Measure the same tabular glyphs used by editable numeric pills. */
-.number-width-measure{position:fixed;left:-10000px;top:0;visibility:hidden;white-space:pre;pointer-events:none}
+
 .number-unit input{flex:none;min-width:28px;line-height:18px}
+
+/* Keep complete glyphs visible; use monospace for every numerical readout. */
+.image-info{gap:4px;line-height:normal;justify-content:center;overflow:visible}
+.image-name{display:block;line-height:18px;min-height:18px;padding-block:1px;box-sizing:content-box}
+.image-size{display:block;line-height:16px;min-height:16px}
+.number-unit,.dimension-input input,.image-size,#resolutionLabel,#canvasSize,#resolutionPill,#exportMeta,#renderPercent{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.number-unit input{font-family:var(--mono);font-weight:400;letter-spacing:0;line-height:18px}
+.project-name input{line-height:20px;min-width:0;max-width:100%;text-overflow:ellipsis}.project-name{max-width:100%;flex:1}.project-name input{flex:0 1 auto}.project-name .figma-icon,#projectExtension{flex-shrink:0}
+.upload-zone strong{line-height:18px}.upload-zone small{line-height:16px;white-space:normal}.upload-zone>span+span{min-width:0;gap:4px}
+.control-label,.field-label,.custom-label{line-height:18px}.custom-label{height:auto;min-height:18px}
+.preview-footer,.playback{line-height:18px}.preview-footer>span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.app-footer>span{height:auto;min-height:16px;line-height:16px}.app-footer{gap:12px}.app-footer>span{min-width:0}.app-footer a{white-space:nowrap}
+.empty-copy p:first-child,.empty-copy p:last-child{height:auto;line-height:18px}
+
+.ratio-grid button{font-family:var(--mono);font-variant-numeric:tabular-nums}.export-card #exportFilename{line-height:18px;padding:8px 0}
