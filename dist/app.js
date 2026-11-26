@@ -13,9 +13,9 @@ function outputSize(){return resolveSize(screens,settings)}
 function formatTime(t){const tenths=Math.round(t*10),minutes=Math.floor(tenths/600),seconds=(tenths%600)/10;return `${String(minutes).padStart(2,'0')}:${seconds.toFixed(1).padStart(4,'0')}`}
 function notify(message){$('#toast').textContent=message;$('#toast').classList.add('visible');clearTimeout(notify.timer);notify.timer=setTimeout(()=>$('#toast').classList.remove('visible'),4500)}
 function setError(message){$('#uploadError').textContent=message;$('#uploadError').hidden=!message}
-function setPlaying(value){playing=value;if(value)$('#play').innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pause preview-icon" aria-hidden="true"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></svg>';else $('#play').replaceChildren(assetIcon('35-1990-imgFrame2'));$('#play').setAttribute('aria-label',value?'Pause preview':'Play preview')}
+function setPlaying(value){playing=value;if(value)$('#play').innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pause preview-icon" aria-hidden="true"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></svg>';else $('#play').replaceChildren(assetIcon('35-1990-imgFrame2'));$('#play').setAttribute('aria-label',value?'Pause preview':'Play preview')}
 function assetIcon(name,className='figma-icon'){const image=document.createElement('img');image.src=`assets/figma/${name}.svg`;image.alt='';image.className=className;image.draggable=false;return image}
-function updateRange(input){const percentage=(Number(input.value)-Number(input.min))/(Number(input.max)-Number(input.min))*100;input.style.setProperty('--progress',Math.max(0,Math.min(100,percentage))+'%')}
+function updateRange(input){const percentage=(Number(input.value)-Number(input.min))/(Number(input.max)-Number(input.min))*100;input.style.setProperty('--progress',Math.max(0,Math.min(100,percentage))+'%');if(input.id==='scrubber')input.parentElement.style.setProperty('--progress',Math.max(0,Math.min(100,percentage))+'%')}
 function downloadName(extension){return (settings.projectName||'Folio showreel').replace(/[<>:"/\\|?*\x00-\x1f]/g,'').trim().slice(0,80)+'.'+extension}
 function updateCompositionSize(bytes){$('#compositionSize').textContent='Comp size: '+(bytes/1024/1024).toFixed(1)+' MB'}
 function draw(c,w,h,t){renderComposition(c,w,h,t,screens,settings,backgroundAsset)}
@@ -106,7 +106,7 @@ function sourcePointerMove(event){
 function updateSourceTarget(){
   const d=sourceDrag;if(!d?.active)return;
   d.ghost.style.left=(d.x-d.offsetX)+'px';d.ghost.style.top=(d.y-d.offsetY)+'px';
-  const list=$('#imageList'),box=list.getBoundingClientRect(),rows=[...list.children];let best=null,bestDistance=Infinity;
+  const list=$('#imageList'),box=$('.inspector').getBoundingClientRect(),rows=[...list.children];let best=null,bestDistance=Infinity;
   for(const row of rows){row.classList.remove('drop-before','drop-after');const rect=row.getBoundingClientRect();if(rect.bottom<box.top||rect.top>box.bottom)continue;const dx=d.x-Math.max(rect.left,Math.min(rect.right,d.x)),dy=d.y-Math.max(rect.top,Math.min(rect.bottom,d.y)),distance=dx*dx+dy*dy;if(distance<bestDistance){best=row;bestDistance=distance}}
   if(!best)return;
   const rect=best.getBoundingClientRect(),after=d.y>rect.top+rect.height/2;
@@ -116,9 +116,9 @@ function updateSourceTarget(){
 }
 function sourceDragTick(){
   const d=sourceDrag;if(!d?.active)return;
-  const list=$('#imageList'),rect=list.getBoundingClientRect();
-  if(d.y<rect.top+30)list.scrollTop-=Math.min(12,(rect.top+30-d.y)/3);
-  else if(d.y>rect.bottom-30)list.scrollTop+=Math.min(12,(d.y-rect.bottom+30)/3);
+  const scroller=$('.inspector'),rect=scroller.getBoundingClientRect();
+  if(d.y<rect.top+30)scroller.scrollTop-=Math.min(12,(rect.top+30-d.y)/3);
+  else if(d.y>rect.bottom-30)scroller.scrollTop+=Math.min(12,(d.y-rect.bottom+30)/3);
   updateSourceTarget();d.raf=requestAnimationFrame(sourceDragTick);
 }
 function finishSourceDrag(commit){
