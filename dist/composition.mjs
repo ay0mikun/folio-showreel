@@ -1,4 +1,5 @@
 export const BACKGROUNDS={light:'#fefefe',dark:'#0e0e0e'};
+export const GRADIENTS=[['#e6b8ff','#7a8dff'],['#ffcf85','#fa7a86'],['#bcead5','#739bff'],['#f6dcff','#b8e6ff'],['#30394a','#111217'],['#ffb0ce','#8765dc']];
 export function resolveSize(screens,settings){
   if(settings.sizeMode==='custom')return [Number(settings.width),Number(settings.height)];
   const source=screens.find(screen=>screen.id===settings.sizeSourceId)||screens[0];
@@ -24,27 +25,38 @@ export function transitionEase(t,feel){
 }
 const layers=new WeakMap();
 function browserCanvas(width,height){const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;return canvas}
-function paintImage(context,source,width,height,opacity=1,cover=false){
-  const rect=fitRect(source.width,source.height,width,height,cover);
-  context.save();context.globalAlpha=opacity;context.drawImage(source.image,rect.x,rect.y,rect.width,rect.height);context.restore();
+export function screenRect(sourceWidth,sourceHeight,width,height,padding=0){
+  // Padding is a percentage of the short side, shared between opposite edges.
+  const inset=Math.min(width,height)*Math.max(0,Math.min(80,Number(padding)||0))/200;
+  const rect=fitRect(sourceWidth,sourceHeight,width-inset*2,height-inset*2);
+  return {...rect,x:rect.x+inset,y:rect.y+inset};
+}
+function paintImage(context,source,width,height,opacity=1,cover=false,settings={}){
+  const rect=cover?fitRect(source.width,source.height,width,height,true):screenRect(source.width,source.height,width,height,settings.padding);
+  context.save();context.globalAlpha=opacity;
+  const radius=cover?0:Math.min(rect.width,rect.height)*Math.max(0,Math.min(100,Number(settings.radius)||0))/200;
+  if(radius){context.beginPath();context.roundRect(rect.x,rect.y,rect.width,rect.height,radius);context.clip()}
+  context.drawImage(source.image,rect.x,rect.y,rect.width,rect.height);context.restore();
 }
 export function renderComposition(context,width,height,time,screens,settings,background,makeCanvas=browserCanvas){
   context.save();context.globalAlpha=1;context.globalCompositeOperation='source-over';context.clearRect(0,0,width,height);
   const mode=settings.background||'light';
   if(mode!=='none'){
-    context.fillStyle=BACKGROUNDS[mode]||BACKGROUNDS.light;context.fillRect(0,0,width,height);
+    context.fillStyle=mode==='solid'?settings.solidColor||BACKGROUNDS.light:BACKGROUNDS[mode]||BACKGROUNDS.light;
+    if(mode==='gradient'){const colors=GRADIENTS[settings.gradient]||GRADIENTS[0],gradient=context.createLinearGradient(0,0,width,height);colors.forEach((color,index)=>gradient.addColorStop(index/(colors.length-1),color));context.fillStyle=gradient}
+    context.fillRect(0,0,width,height);
     if(mode==='image'&&background)paintImage(context,background,width,height,1,true);
   }
   if(screens.length){
     const index=Math.min(screens.length-1,Math.floor(Math.max(0,time)/settings.seconds));
     const local=time-index*settings.seconds;
     const alpha=index<screens.length-1&&local>settings.seconds-settings.fade?transitionEase((local-settings.seconds+settings.fade)/settings.fade,settings.feel):0;
-    if(alpha===0)paintImage(context,screens[index],width,height);
+    if(alpha===0)paintImage(context,screens[index],width,height,1,false,settings);
     else{
       let layer=layers.get(context);
       if(!layer||layer.width!==width||layer.height!==height){const canvas=makeCanvas(width,height);layer={canvas,context:canvas.getContext('2d'),width,height};layers.set(context,layer)}
       const c=layer.context;c.clearRect(0,0,width,height);c.save();c.globalCompositeOperation='lighter';
-      paintImage(c,screens[index],width,height,1-alpha);paintImage(c,screens[index+1],width,height,alpha);c.restore();
+      paintImage(c,screens[index],width,height,1-alpha,false,settings);paintImage(c,screens[index+1],width,height,alpha,false,settings);c.restore();
       context.drawImage(layer.canvas,0,0);
     }
   }

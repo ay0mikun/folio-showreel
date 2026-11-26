@@ -32,3 +32,20 @@ test('preview dimensions retain aspect ratio without changing export size',()=>{
 test('background defaults use the requested exact colors',()=>{
   assert.deepEqual(BACKGROUNDS,{light:'#fefefe',dark:'#0e0e0e'});
 });
+
+test('padding insets the source without changing its aspect ratio',async()=>{
+  const {screenRect}=await import('../dist/composition.mjs');
+  assert.deepEqual(screenRect(1200,800,1200,800,0),{x:0,y:0,width:1200,height:800});
+  const rect=screenRect(1200,800,1200,800,20);
+  assert.equal(rect.height,640);assert.equal(rect.width/rect.height,1.5);
+  assert.equal(rect.x,(1200-rect.width)/2);assert.equal(rect.y,80);
+});
+test('padded portrait and landscape sources remain within the canvas',async()=>{
+  const {screenRect}=await import('../dist/composition.mjs');
+  for(const [sw,sh] of [[600,1000],[1200,800]])for(const padding of [0,20,80]){
+    const rect=screenRect(sw,sh,1200,800,padding),inset=800*padding/200;
+    assert.ok(rect.x>=inset-.00001&&rect.y>=inset-.00001);
+    assert.ok(rect.x+rect.width<=1200-inset+.00001&&rect.y+rect.height<=800-inset+.00001);
+    assert.ok(Math.abs(rect.width/rect.height-sw/sh)<1e-10);
+  }
+});
