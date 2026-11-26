@@ -30,3 +30,11 @@ SVG files retain the original downloaded root dimensions. Uploaded source imager
 The dotted artboard is a code-native 20 px tile containing the supplied 4 × 4 px, 1 px-radius dot geometry. It is preview-only, so it never becomes part of transparent exports.
 
 Preset images come from Figma component 68:7032. The user authorized optimizing these assets. Full-resolution dimensions are preserved; 108 px thumbnails are only used in the 36 px selector slots.
+
+## Dialogue variants (70:17912, 76:23801)
+- `guide-app-icon.svg`: exact guide icon, native 63×63 inside the 60×60 Figma slot.
+- `export-loader.svg`: 18×18 rendering indicator.
+- `export-cancel.svg`: 16×16 cancel icon.
+- `share-x.svg`: 13×13 asset centered in the 16×16 share slot.
+- `support-avatar.png`: supplied portrait, cropped into the 60×60 gratitude slot.
+- Export imagery and filename are generated from the user's composition, replacing the example content in Figma.
