@@ -54,3 +54,7 @@ button{appearance:none;-webkit-appearance:none}.swatch-strip>button[aria-pressed
 #cancelRender,#download{grid-column:1;grid-row:1}#shareResult{grid-column:1;grid-row:2}#backToEditor{grid-column:1;grid-row:3}
 .cancel-progress{transition:width 180ms ease-out;will-change:width}.morph-cancel-label{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:4px;color:#555;pointer-events:none}.morph-cancel-label img{flex-shrink:0}#download>span:not(.morph-cancel-label){position:relative}#renderDialog:not(.is-ready) #download,#renderDialog:not(.is-ready) #backToEditor{display:none}
 @media(prefers-reduced-motion:reduce){.cancel-progress{transition:none}}
+
+/* Measure the same tabular glyphs used by editable numeric pills. */
+.number-width-measure{position:fixed;left:-10000px;top:0;visibility:hidden;white-space:pre;pointer-events:none}
+.number-unit input{flex:none;min-width:28px;line-height:18px}

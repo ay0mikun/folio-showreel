@@ -13,7 +13,16 @@ const FPS=30,MAX_IMAGES=12;
 const DEFAULTS={seconds:.6,fade:.48,feel:'soft',format:'gif',orderMode:'name',background:'none',solidColor:'#fefefe',gradient:0,backgroundPreset:null,padding:8,radius:0,projectName:'Name of file',sizeMode:'source',width:null,height:null,sizeSourceId:null};
 let screens=[],settings={...DEFAULTS},backgroundAsset=null,pendingSizeError='',playing=false,position=0,lastFrame=0,db=null,saveTimer,outputURL=null,rendering=false,cancelRender=null;
 const canvas=$('#preview'),context=canvas.getContext('2d',{alpha:true});
-const numberMeasure=document.createElement('canvas').getContext('2d');
+const numberMeasure=document.createElement('span');
+numberMeasure.setAttribute('aria-hidden','true');numberMeasure.className='number-width-measure';document.body.append(numberMeasure);
+function fitNumberInput(input){
+  const style=getComputedStyle(input);
+  for(const property of ['fontFamily','fontSize','fontWeight','fontStyle','fontStretch','fontVariantNumeric','letterSpacing'])numberMeasure.style[property]=style[property];
+  numberMeasure.textContent=input.value||'0';
+  const chrome=parseFloat(style.paddingLeft)+parseFloat(style.paddingRight)+parseFloat(style.borderLeftWidth)+parseFloat(style.borderRightWidth);
+  input.style.width=Math.ceil(numberMeasure.getBoundingClientRect().width+chrome+2)+'px';
+}
+for(const input of document.querySelectorAll('.number-unit input'))input.addEventListener('input',()=>fitNumberInput(input));
 const colorPicker=mountColorPicker($('#pickColor'),$('#colorPicker'),setSolidColor);
 let presetRequest=0,presetLoading=false;
 const presetCache=new Map();
@@ -66,7 +75,7 @@ function sync(){
   $('#projectName').value=settings.projectName;$('#projectName').style.width=Math.min(238,Math.max(26,settings.projectName.length*7.3))+'px';
   $('#projectExtension').textContent='.'+(settings.format==='video'?'mp4':settings.format);
   for(const key of ['padding','radius']){$('#'+key).value=settings[key];$('#'+key+'Range').value=settings[key]}
-  document.querySelectorAll('.number-unit input').forEach(input=>{numberMeasure.font=getComputedStyle(input).font;input.style.width=Math.ceil(numberMeasure.measureText(input.value||'0').width+12)+'px'});
+  document.querySelectorAll('.number-unit input').forEach(fitNumberInput);
   document.querySelectorAll('input[type=range]').forEach(updateRange);
   updateCompositionSize(screens.reduce((sum,screen)=>sum+screen.blob.size,0)+(backgroundAsset?.blob.size||0));
   if(!has){$('#previewStatus').textContent='Waiting for your first screen';setPlaying(false)}
