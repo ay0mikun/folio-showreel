@@ -1,6 +1,6 @@
 # Figma asset mapping
 
-All SVGs are the unmodified downloaded assets; their native root sizes are retained. Source thumbnails remain uploaded user content. The user-supplied app icon replaces the Figma wordmark in the header and is also the favicon.
+All SVGs are the unmodified downloaded assets; their native root sizes are retained. Source thumbnails remain uploaded user content. The Figma wordmark is used in the header. The user-supplied square icon is used for the favicon and saved web app.
 
 | Asset | Native size | UI slot |
 | --- | --- | --- |
@@ -26,3 +26,4 @@ All SVGs are the unmodified downloaded assets; their native root sizes are retai
 | `4-8-imgVector4.svg` | 22.6918 × 22.145 | JPG document fold shadow |
 | `4-8-imgVector5.svg` | 22.6918 × 22.145 | PNG document fold shadow |
 | `4-8-imgVector6.svg` | 16.4936 × 15.8406 | PNG document fold |
+| `4-8-imgFolio.svg` | 67.9014 × 20 | Header wordmark |

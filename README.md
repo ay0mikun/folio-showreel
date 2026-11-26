@@ -26,4 +26,4 @@ Run `npm test` and `node --check dist/app.js`.
 
 ## Bundled dependencies
 
-`dist/vendor/gifenc.mjs` is gifenc 1.0.3 (MIT), with its license alongside it. Inter and Geist Mono variable fonts are bundled from Fontsource, each with its OFL license. Figma SVG assets are bundled locally, and the user-provided app icon is used for the header and favicon. No third-party CDN is needed at runtime.
+`dist/vendor/gifenc.mjs` is gifenc 1.0.3 (MIT), with its license alongside it. Inter and Geist Mono variable fonts are bundled from Fontsource, each with its OFL license. Figma SVG assets are bundled locally, and the Figma wordmark appears in the header; the user-provided square icon is used for the favicon and saved web app. No third-party CDN is needed at runtime.

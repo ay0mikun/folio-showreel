@@ -1,0 +1,18 @@
+{
+  "id": "./",
+  "name": "Folio \u2014 Showreel studio",
+  "short_name": "Folio",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0e0e0e",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "assets/app-icon.png",
+      "sizes": "800x800",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
