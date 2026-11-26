@@ -94,3 +94,19 @@ button{appearance:none;-webkit-appearance:none}.swatch-strip>button[aria-pressed
 #guide .guide-sections>section:nth-child(2),#supportDialog .support-actions>:nth-child(1){--content-delay:165ms}
 #guide .guide-sections>section:nth-child(3),#supportDialog .support-actions>:nth-child(2){--content-delay:200ms}
 @media(prefers-reduced-motion:reduce){#guide[open] .guide-icon,#guide[open] .guide-intro h2,#guide[open] .guide-sections>section,#supportDialog[open] .support-avatar,#supportDialog[open] .support-copy>*,#supportDialog[open] .support-actions>*{animation:none}}
+
+/* Tactile visual detents; native range steps and keyboard behavior are unchanged. */
+.range::-webkit-slider-thumb,.hue-slider::-webkit-slider-thumb{transition:transform 100ms ease,background-color 80ms ease,box-shadow 100ms ease}
+.range::-moz-range-thumb,.hue-slider::-moz-range-thumb{transition:transform 100ms ease,background-color 80ms ease,box-shadow 100ms ease}
+.range.is-adjusting::-webkit-slider-thumb{transform:scale(1.2,.9);background:#555;box-shadow:0 1px 3px #0008,0 0 0 2px #292929}
+.range.is-adjusting::-moz-range-thumb{transform:scale(1.2,.9);background:#555;box-shadow:0 1px 3px #0008,0 0 0 2px #292929}
+.range[data-stepping=true]::-webkit-slider-thumb{background:#8a8a8a}.range[data-stepping=true]::-moz-range-thumb{background:#8a8a8a}
+.hue-slider.is-adjusting::-webkit-slider-thumb{transform:scale(1.15,.9)}.hue-slider.is-adjusting::-moz-range-thumb{transform:scale(1.15,.9)}
+.hue-slider[data-stepping=true]::-webkit-slider-thumb{box-shadow:0 0 0 2px #fff8}.hue-slider[data-stepping=true]::-moz-range-thumb{box-shadow:0 0 0 2px #fff8}
+@media(prefers-reduced-motion:reduce){.range::-webkit-slider-thumb,.range::-moz-range-thumb,.hue-slider::-webkit-slider-thumb,.hue-slider::-moz-range-thumb{transition:none;transform:none}}
+
+/* A small, progress-driven canvas is decorative; exported media stays untouched. */
+#renderDialog .export-art #exportParticles{position:absolute;inset:auto;z-index:2;width:calc(var(--export-media-width,100%) * .96);height:calc(var(--export-media-height,100%) * .96);border-radius:12px;image-rendering:auto;pointer-events:none;opacity:var(--reveal-cloud,1)}
+.export-dialog.is-forming #exportPoster,.export-dialog.is-forming #renderedVideo,.export-dialog.is-forming #renderedGif{opacity:var(--reveal-sharp,0);filter:blur(var(--reveal-blur,8px))}
+.export-dialog.reveal-pending #exportPoster{opacity:.16;filter:blur(8px)}
+@media(prefers-reduced-motion:reduce){.export-dialog.reveal-pending #exportPoster{opacity:1;filter:none}#exportParticles{display:none!important}}

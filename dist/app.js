@@ -1,3 +1,4 @@
+import {mountTactileRanges} from './tactile-ranges.mjs';
 import {openFromTrigger,revealFromTrigger} from './trigger-motion.mjs';
 import {previewFrameKey} from './preview-cache.mjs';
 import {createExportMotion} from './export-motion.mjs?v=6c8f9d2f73';
@@ -300,22 +301,30 @@ $('#supportDialog').addEventListener('close',()=>feedback.dismiss());
 $('#download').addEventListener('click',()=>{setTimeout(()=>{if($('#renderDialog').classList.contains('is-ready')){$('#renderedVideo').pause();$('#renderDialog').close()}},0)});
 $('#renderDialog').addEventListener('close',()=>{if($('#renderDialog').classList.contains('is-ready'))setTimeout(()=>feedback.request(),0);else feedback.activity()});
 const exportMotion=createExportMotion($('#renderDialog'));
+let imageReveal=null,revealImport=null,revealRun=0;
+const warmImageReveal=()=>revealImport??=import('./image-reveal.mjs');
+$('#export').addEventListener('pointerenter',()=>warmImageReveal().catch(()=>{}),{passive:true});
+$('#export').addEventListener('focus',()=>warmImageReveal().catch(()=>{}));
+$('#renderDialog').addEventListener('close',()=>{revealRun++;imageReveal?.stop()});
 let exportStartGeometry=null;
 function prepareExportDialog(){
-  exportMotion.reset();exportStartGeometry=null;
+  exportMotion.reset();exportStartGeometry=null;imageReveal?.stop();const run=++revealRun;
   const dialog=$('#renderDialog');dialog.classList.remove('is-ready');$('#shareResult').hidden=true;
   $('#exportFilename').textContent=downloadName(settings.format==='video'?'mp4':settings.format);
   const [mediaWidth,mediaHeight]=outputSize(),mediaScale=Math.min(330/mediaWidth,220/mediaHeight);
   dialog.style.setProperty('--export-media-width',(mediaWidth*mediaScale/330*100)+'%');dialog.style.setProperty('--export-media-height',(mediaHeight*mediaScale/220*100)+'%');
   const poster=$('#exportPoster'),[w,h]=outputSize(),scale=Math.min(1,660/w,440/h);poster.width=Math.max(1,Math.round(w*scale));poster.height=Math.max(1,Math.round(h*scale));draw(poster.getContext('2d',{alpha:true}),poster.width,poster.height,position);
+  dialog.classList.add('reveal-pending');
+  warmImageReveal().then(({createImageReveal})=>{if(run!==revealRun||!rendering||dialog.classList.contains('is-ready'))return;imageReveal??=createImageReveal(dialog);imageReveal.start();imageReveal.progress($('#renderProgress').value/100)}).catch(()=>dialog.classList.remove('reveal-pending'));
 }
 function finishExportDialog(blob){
+  imageReveal?.finish();$('#renderDialog').classList.remove('reveal-pending');
   const previous=exportStartGeometry||exportMotion.capture();exportStartGeometry=null;
   $('#cancelRender').hidden=true;$('#renderDialog').classList.add('is-ready');$('#shareResult').hidden=false;$('#renderTitle').textContent='Your reel is ready!';
   $('#exportFilename').textContent=$('#download').download;$('#download').textContent=`Download · ${(blob.size/1024/1024).toFixed(1)} MB`;
   exportMotion.complete(previous);
 }
-new MutationObserver(()=>$('#renderDialog').style.setProperty('--export-progress',$('#renderProgress').value+'%')).observe($('#renderProgress'),{attributes:true,attributeFilter:['value']});
+new MutationObserver(()=>{const value=$('#renderProgress').value;$('#renderDialog').style.setProperty('--export-progress',value+'%');imageReveal?.progress(value/100)}).observe($('#renderProgress'),{attributes:true,attributeFilter:['value']});
 // MediaRecorder streams WebM without a Duration entry. Add it so players can seek
 // and show the correct length. Segment size in streamed WebM is unspecified.
 async function addWebmDuration(blob,duration){const bytes=new Uint8Array(await blob.arrayBuffer());function read(offset,id=false){if(offset>=bytes.length)return null;let mask=128,n=1;while(n<=8&&!(bytes[offset]&mask)){mask>>=1;n++}if(n>8||offset+n>bytes.length)return null;let value=id?bytes[offset]:bytes[offset]&(mask-1);for(let i=1;i<n;i++)value=value*256+bytes[offset+i];return {value,n}}
@@ -397,3 +406,5 @@ async function exportPng(){
   }catch(error){console.error(error);notify('Could not export the PNG. Please try again.')}
   finally{rendering=false}
 }
+
+mountTactileRanges();

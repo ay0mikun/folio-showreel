@@ -1,0 +1,8 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createParticleField,averageCells} from '../dist/vendor/easyui-particles.mjs';
+import {revealState} from '../dist/image-reveal.mjs';
+test('particle mosaic lands deterministically in the target image colors',()=>{const options={width:16,height:12,cell:4,colors:['#ffffff'],seed:7};const colors=new Uint8Array(12*3);for(let i=0;i<colors.length;i+=3){colors[i]=255;colors[i+1]=40;colors[i+2]=20}const a=createParticleField(options),b=createParticleField(options),x=new Uint32Array(16*12),y=new Uint32Array(16*12);a.setTargets(colors);b.setTargets(colors);assert.equal(a.draw(x,0,1,1),true);b.draw(y,0,1,1);assert.deepEqual(x,y);assert.equal(x.every(pixel=>pixel===0xff1428ff),true)});
+test('cell sampling preserves averaged colors including edge blocks',()=>{const data=new Uint8Array([255,0,0,255,0,255,0,255,0,0,255,255,255,255,255,255]);assert.deepEqual([...averageCells(data,2,2,2)],[127,127,127]);assert.equal(averageCells(data,2,2,1).length,12)});
+test('a progress report of 100% cannot reveal completion before export succeeds',()=>{const waiting=revealState(1,false),done=revealState(1,true);assert.equal(waiting.progress,.985);assert.ok(waiting.cloud>0);assert.ok(waiting.blur>0);assert.equal(done.sharp,1);assert.equal(done.cloud,0);assert.equal(done.blur,0)});
+test('progress maps from scattered cloud through gathering to a refined image',()=>{assert.equal(revealState(0).gather,0);assert.equal(revealState(0).sharp,0);assert.ok(revealState(.5).gather>0);assert.ok(revealState(.5).gather<1);assert.equal(revealState(.5).sharp,0);assert.ok(revealState(.95).sharp>0)});
