@@ -2,7 +2,7 @@ import {videoEncoding} from './video-format.mjs';
 import {createAssetCache} from './asset-cache.mjs';
 import {createToast} from './toast.mjs';
 import {mountTactileRanges} from './tactile-ranges.mjs';
-import {openFromTrigger,revealFromTrigger} from './trigger-motion.mjs';
+import {openFromTrigger} from './trigger-motion.mjs';
 import {previewFrameKey} from './preview-cache.mjs';
 import {createExportMotion} from './export-motion.mjs?v=6c8f9d2f73';
 import {createFeedbackPrompt} from './feedback.mjs';
@@ -26,7 +26,7 @@ function fitNumberInput(input){
 }
 for(const input of document.querySelectorAll('.number-unit input'))input.addEventListener('input',()=>fitNumberInput(input));
 const colorPicker=mountColorPicker($('#pickColor'),$('#colorPicker'),setSolidColor);
-let presetRequest=0,presetLoading=false,lastBackgroundMode=null;
+let presetRequest=0,presetLoading=false;
 const presetCache=createAssetCache({load:loadPresetAsset,retain:(asset,key)=>asset===backgroundAsset||key===settings.backgroundPreset,dispose:asset=>{URL.revokeObjectURL(asset.url);asset.image.src=''}});
 let interactivePreview=false;
 let previewFrameID=null,lastPreviewTick=0,previewPaintKey='',previewBox=null,listSignature='';
@@ -194,7 +194,6 @@ function syncCompositionControls(width,height){
   const selectedMode=['light','dark'].includes(settings.background)?'solid':settings.background==='gradient'?'image':settings.background;
   document.querySelectorAll('[data-background]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.background===selectedMode)));
   $('#transparentOptions').hidden=selectedMode!=='none';$('#imageBackgroundOptions').hidden=selectedMode!=='image';$('#solidOptions').hidden=selectedMode!=='solid';
-  if(lastBackgroundMode!==null&&lastBackgroundMode!==selectedMode){const panel=selectedMode==='none'?$('#transparentOptions'):selectedMode==='image'?$('#imageBackgroundOptions'):$('#solidOptions');revealFromTrigger(panel,$(`[data-background="${selectedMode}"]`))}lastBackgroundMode=selectedMode;
   const color=settings.background==='dark'?'#0e0e0e':settings.background==='light'?'#fefefe':settings.solidColor;
   colorPicker.setColor(color);
   document.querySelectorAll('[data-color]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.color.toLowerCase()===color.toLowerCase())));
