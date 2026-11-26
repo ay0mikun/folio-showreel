@@ -13,7 +13,8 @@ let screens=[],settings={...DEFAULTS},backgroundAsset=null,pendingSizeError='',p
 const canvas=$('#preview'),context=canvas.getContext('2d',{alpha:true});
 const numberMeasure=document.createElement('canvas').getContext('2d');
 const colorPicker=mountColorPicker($('#pickColor'),$('#colorPicker'),setSolidColor);
-let presetRequest=0;
+let presetRequest=0,presetLoading=false;
+const presetCache=new Map();
 const totalDuration=()=>screens.length*settings.seconds;
 function outputSize(){return resolveSize(screens,settings)}
 function formatTime(t){const tenths=Math.round(t*10),minutes=Math.floor(tenths/600),seconds=(tenths%600)/10;return `${String(minutes).padStart(2,'0')}:${seconds.toFixed(1).padStart(4,'0')}`}
@@ -43,6 +44,7 @@ function sync(){
   document.body.classList.toggle('has-screens',has);
   $('#preview').hidden=!has;$('#emptyPreview').hidden=has;
   for(const id of ['play','restart','scrubber','export'])$('#'+id).disabled=!has||Boolean(pendingSizeError||sizeError(w,h));
+  if(presetLoading&&settings.background==='image')$('#export').disabled=true;
   $('#clearAll').hidden=!has;
   $('#durationLabel').textContent=formatTime(total);$('#scrubber').max=total||1;
   position=Math.min(position,total);$('#currentTime').textContent=formatTime(position);$('#scrubber').value=position;
@@ -182,7 +184,7 @@ async function commitSize(){
 async function uploadBackground(file){
   await ready;if(!file)return;
   if(!['image/png','image/jpeg','image/webp','image/svg+xml'].includes(file.type)||file.size>40*1024*1024){notify('Use a PNG, JPG, WebP or SVG background smaller than 40 MB.');return}
-  try{const asset=await decodeAsset(file,file.name);if(backgroundAsset)URL.revokeObjectURL(backgroundAsset.url);backgroundAsset=asset;settings.backgroundPreset=null;settings.background='image';sync();save()}
+  try{const asset=await decodeAsset(file,file.name);if(backgroundAsset&&!backgroundAsset.preset)URL.revokeObjectURL(backgroundAsset.url);backgroundAsset=asset;settings.backgroundPreset=null;settings.background='image';sync();save()}
   catch{notify('Could not open this background image. Please try another file.')}
   $('#backgroundFile').value='';
 }
@@ -190,26 +192,40 @@ $('#canvasWidth').onchange=$('#canvasHeight').onchange=commitSize;
 $('#sizeSource').onchange=async e=>{const id=e.target.value;await ready;settings.sizeSourceId=id;settings.sizeMode='source';pendingSizeError='';sync();save()};
 $('#matchSource').onclick=async()=>{await ready;settings.sizeMode='source';pendingSizeError='';ensureSizeSource();sync();save()};
 document.querySelectorAll('[data-background]').forEach(button=>button.onclick=async()=>{
-  await ready;presetRequest++;settings.background=button.dataset.background;
+  await ready;presetRequest++;presetLoading=false;settings.background=button.dataset.background;
   if(settings.background==='none'&&settings.format==='video')settings.format='gif';
+  sync();
   if(settings.background==='image'&&!backgroundAsset){await choosePreset([7,8,9,10,12,11].includes(settings.backgroundPreset)?settings.backgroundPreset:7);return}
   sync();save();
 });
 $('#uploadBackground').onclick=()=>$('#backgroundFile').click();
 $('#backgroundFile').onchange=e=>{presetRequest++;const file=e.target.files[0];e.target.value='';uploadBackground(file)};
-$('[data-transparent]').onclick=async()=>{await ready;settings.background='none';if(settings.format==='video')settings.format='gif';sync();save()};
-async function presetAsset(index){
-  const formats=index===7?['avif','webp']:['webp'];
-  for(const format of formats){try{const response=await fetch(`assets/reelo/preset-${index}.${format}`);if(!response.ok)throw new Error('Background unavailable');return await decodeAsset(await response.blob(),`Background ${[7,8,9,10,12,11].indexOf(index)+1}`)}catch(error){if(format===formats.at(-1))throw error}}
+$('[data-transparent]').onclick=async()=>{await ready;presetRequest++;presetLoading=false;settings.background='none';if(settings.format==='video')settings.format='gif';sync();save()};
+function presetAsset(index){
+  if(presetCache.has(index))return presetCache.get(index);
+  const pending=(async()=>{
+    const formats=index===7?['avif','webp']:['webp'];
+    for(const format of formats){try{const response=await fetch(`assets/reelo/preset-${index}.${format}`);if(!response.ok)throw new Error('Background unavailable');const asset=await decodeAsset(await response.blob(),`Background ${[7,8,9,10,12,11].indexOf(index)+1}`);asset.preset=true;return asset}catch(error){if(format===formats.at(-1))throw error}}
+  })();
+  presetCache.set(index,pending);
+  pending.catch(()=>{if(presetCache.get(index)===pending)presetCache.delete(index)});
+  return pending;
 }
 async function choosePreset(index){
   await ready;const request=++presetRequest;
-  try{const asset=await presetAsset(index);if(request!==presetRequest){URL.revokeObjectURL(asset.url);return}if(backgroundAsset)URL.revokeObjectURL(backgroundAsset.url);backgroundAsset=asset;settings.backgroundPreset=index;settings.background='image';sync();save()}
-  catch{notify('Could not load the background. Please try again.')}
+  const previousPreset=settings.backgroundPreset;presetLoading=true;settings.backgroundPreset=index;settings.background='image';sync();
+  try{const asset=await presetAsset(index);if(request!==presetRequest)return;if(backgroundAsset&&!backgroundAsset.preset)URL.revokeObjectURL(backgroundAsset.url);backgroundAsset=asset;presetLoading=false;settings.backgroundPreset=index;settings.background='image';sync();save()}
+  catch{if(request!==presetRequest)return;presetLoading=false;settings.backgroundPreset=previousPreset;if(!backgroundAsset)settings.background='none';sync();notify('Could not load the background. Please try again.')}
 }
-document.querySelectorAll('[data-preset]').forEach(button=>button.onclick=()=>choosePreset(Number(button.dataset.preset)));
+document.querySelectorAll('[data-preset]').forEach(button=>{
+  const warm=()=>presetAsset(Number(button.dataset.preset)).catch(()=>{});
+  button.onpointerenter=button.onfocus=warm;
+  button.onclick=()=>choosePreset(Number(button.dataset.preset));
+});
+const imageModeButton=$('[data-background="image"]');
+imageModeButton.onpointerenter=imageModeButton.onfocus=()=>presetAsset(settings.backgroundPreset??7).catch(()=>{});
 function setSolidColor(color){
-  settings.background='solid';settings.solidColor=color;
+  presetRequest++;presetLoading=false;settings.background='solid';settings.solidColor=color;
   colorPicker.setColor(color);document.querySelectorAll('[data-color]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.color.toLowerCase()===color.toLowerCase())));
   $('#pickColor').setAttribute('aria-pressed',String(![...document.querySelectorAll('[data-color]')].some(button=>button.dataset.color.toLowerCase()===color.toLowerCase())));
   updatePreview();save();
@@ -247,7 +263,7 @@ $('#exportFormat').onchange=async e=>{const value=e.target.value;await ready;set
 $('#screenDurationRange').oninput=async e=>{const v=Number(e.target.value);await ready;settings.seconds=v;timingChanged()};
 $('#resetTiming').onclick=async()=>{await ready;settings.seconds=DEFAULTS.seconds;timingChanged()};
 $('#resetTransition').onclick=async()=>{await ready;settings.feel='soft';settings.fade=Math.min(.5,settings.seconds*.8);sync();save()};
-$('#resetSettings').onclick=async()=>{await ready;presetRequest++;if(backgroundAsset)URL.revokeObjectURL(backgroundAsset.url);backgroundAsset=null;settings={...DEFAULTS,orderMode:settings.orderMode,sizeSourceId:screens[0]?.id||null};pendingSizeError='';position=0;setPlaying(false);sync();save();notify('Settings reset. Your screens are kept.')};
+$('#resetSettings').onclick=async()=>{await ready;presetRequest++;presetLoading=false;if(backgroundAsset&&!backgroundAsset.preset)URL.revokeObjectURL(backgroundAsset.url);backgroundAsset=null;settings={...DEFAULTS,orderMode:settings.orderMode,sizeSourceId:screens[0]?.id||null};pendingSizeError='';position=0;setPlaying(false);sync();save();notify('Settings reset. Your screens are kept.')};
 $('#guideButton').onclick=()=>$('#guide').showModal();$('#guide .close').onclick=()=>$('#guide').close();
 // MediaRecorder streams WebM without a Duration entry. Add it so players can seek
 // and show the correct length. Segment size in streamed WebM is unspecified.
