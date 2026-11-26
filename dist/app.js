@@ -7,7 +7,7 @@ const $=s=>document.querySelector(s);
 document.addEventListener('keydown',event=>{if(event.key==='Tab')document.documentElement.dataset.keyboardFocus=''},true);
 document.addEventListener('pointerdown',()=>{delete document.documentElement.dataset.keyboardFocus},true);
 const FPS=30,MAX_IMAGES=12;
-const DEFAULTS={seconds:.6,fade:.48,feel:'soft',format:'video',orderMode:'name',background:'light',solidColor:'#fefefe',gradient:0,padding:0,radius:0,projectName:'Name of file',sizeMode:'source',width:null,height:null,sizeSourceId:null};
+const DEFAULTS={seconds:.6,fade:.48,feel:'soft',format:'video',orderMode:'name',background:'light',solidColor:'#fefefe',gradient:0,padding:8,radius:0,projectName:'Name of file',sizeMode:'source',width:null,height:null,sizeSourceId:null};
 let screens=[],settings={...DEFAULTS},backgroundAsset=null,pendingSizeError='',playing=false,position=0,lastFrame=0,db=null,saveTimer,outputURL=null,rendering=false,cancelRender=null;
 const canvas=$('#preview'),context=canvas.getContext('2d',{alpha:true});
 const totalDuration=()=>screens.length*settings.seconds;
@@ -26,10 +26,9 @@ function frame(now){if(lastFrame&&playing&&!rendering){position=Math.min(totalDu
 function sync(){
   const has=screens.length>0,total=totalDuration(),[w,h]=outputSize();
   document.body.classList.toggle('has-screens',has);
-  $('#count').textContent=screens.length+' / '+MAX_IMAGES;
   $('#preview').hidden=!has;$('#emptyPreview').hidden=has;
   for(const id of ['play','restart','scrubber','export'])$('#'+id).disabled=!has||Boolean(pendingSizeError||sizeError(w,h));
-  $('#clearAll').hidden=!has;$('.source-order-tools').hidden=!has;
+  $('#clearAll').hidden=!has;
   $('#durationLabel').textContent=formatTime(total);$('#scrubber').max=total||1;
   position=Math.min(position,total);$('#currentTime').textContent=formatTime(position);$('#scrubber').value=position;
   $('#resolutionLabel').textContent=$('#canvasSize').textContent=$('#resolutionPill').textContent=has?`${w} × ${h}`:'Source size';
@@ -39,15 +38,12 @@ function sync(){
   $('#exportFormat').value=settings.format;
   $('#formatHint').textContent=settings.format==='png'?'Full-resolution PNG · current preview frame':settings.format==='gif'?(settings.background==='none'?'Transparent GIF · 20 fps transitions':'Looping · 20 fps transitions · 256 colors'):(w%2||h%2?'30 fps · WebM keeps your exact dimensions':'30 fps · MP4 where supported');
   $('#screenDurationRange').value=settings.seconds;
-  for(const id of ['fadeDurationRange','fadeDuration']){$('#'+id).max=Number(Math.min(3,settings.seconds*.8).toFixed(3));$('#'+id).value=settings.fade}
   $('#transitionLabel').textContent=settings.feel;
   document.querySelectorAll('[data-feel]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.feel===settings.feel)));
   $('#feelDescription').textContent=settings.feel==='stiff'?'A sharper switch with a direct dissolve.':'Gentle easing through the full transition.';
   $('#perScreenLabel').textContent=Number(settings.seconds.toFixed(2))+'s';$('#screenDuration').value=Number(settings.seconds.toFixed(3));
   $('#totalDuration').value=Number(total.toFixed(2));$('#totalDuration').disabled=!has;$('#totalDuration').min=screens.length*.1;$('#totalDuration').max=screens.length*10;
   $('#timingCount').textContent=screens.length+(screens.length===1?' screen':' screens');
-  $('#fadeLabel').textContent=settings.feel+' dissolve · '+Number(settings.fade.toFixed(2))+'s';
-  $('#sortByName').disabled=screens.length<2;$('#sourceOrderHint').textContent=settings.orderMode==='custom'?'Custom order · drag to reorder':'Filename order · drag to reorder';
   $('#projectName').value=settings.projectName;$('#projectName').style.width=Math.min(238,Math.max(26,settings.projectName.length*7.3))+'px';
   $('#projectExtension').textContent='.'+(settings.format==='video'?'mp4':settings.format);
   for(const key of ['padding','radius']){$('#'+key).value=settings[key];$('#'+key+'Range').value=settings[key]}
@@ -211,15 +207,12 @@ $('#addSources').onclick=$('#upload').onclick=$('#emptyUpload').onclick=()=>$('#
 $('#clearAll').onclick=()=>{screens.forEach(s=>URL.revokeObjectURL(s.url));screens=[];settings.orderMode='name';settings.sizeSourceId=null;pendingSizeError='';position=0;setError('');sync();save()};$('#play').onclick=()=>{if(position>=totalDuration())position=0;setPlaying(!playing);updatePreview()};$('#restart').onclick=()=>{position=0;setPlaying(true);updatePreview()};$('#scrubber').oninput=e=>{position=Number(e.target.value);setPlaying(false);updatePreview()};function timingChanged(){position=0;setPlaying(false);settings.fade=Math.min(settings.fade,settings.seconds*.8);sync();save()}
 $('#screenDuration').onchange=async e=>{const v=Number(e.target.value);await ready;settings.seconds=Math.min(10,Math.max(.1,Number.isFinite(v)&&v>0?v:1.5));timingChanged()};
 $('#totalDuration').onchange=async e=>{const v=Number(e.target.value);await ready;if(!screens.length)return;settings.seconds=Math.min(10,Math.max(.1,(Number.isFinite(v)&&v>0?v:totalDuration())/screens.length));timingChanged()};
-$('#fadeDuration').onchange=async e=>{const v=Number(e.target.value);await ready;settings.fade=Math.max(.02,Math.min(3,settings.seconds*.8,Number.isFinite(v)&&v>0?v:.5));timingChanged()};
 document.querySelectorAll('[data-feel]').forEach(button=>button.onclick=async()=>{await ready;settings.feel=button.dataset.feel;sync();save()});
 $('#exportFormat').onchange=async e=>{const value=e.target.value;await ready;settings.format=settings.background==='none'&&value==='video'?'gif':value;sync();save()};
 $('#screenDurationRange').oninput=async e=>{const v=Number(e.target.value);await ready;settings.seconds=v;timingChanged()};
-$('#fadeDurationRange').oninput=async e=>{const v=Number(e.target.value);await ready;settings.fade=v;timingChanged()};
 $('#resetTiming').onclick=async()=>{await ready;settings.seconds=DEFAULTS.seconds;timingChanged()};
 $('#resetTransition').onclick=async()=>{await ready;settings.feel='soft';settings.fade=Math.min(.5,settings.seconds*.8);sync();save()};
 $('#resetSettings').onclick=async()=>{await ready;settings={...DEFAULTS,orderMode:settings.orderMode,sizeSourceId:screens[0]?.id||null};pendingSizeError='';position=0;setPlaying(false);sync();save();notify('Settings reset. Your screens are kept.')};
-$('#sortByName').onclick=async()=>{await ready;screens=sortByFilename(screens);settings.orderMode='name';position=0;setPlaying(false);sync();save();notify('Screens sorted by filename.')};
 $('#guideButton').onclick=()=>$('#guide').showModal();$('#guide .close').onclick=()=>$('#guide').close();
 // MediaRecorder streams WebM without a Duration entry. Add it so players can seek
 // and show the correct length. Segment size in streamed WebM is unspecified.
