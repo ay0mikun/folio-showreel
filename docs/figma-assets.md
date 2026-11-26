@@ -38,3 +38,9 @@ Preset images come from Figma component 68:7032. The user authorized optimizing 
 - `share-x.svg`: 13×13 asset centered in the 16×16 share slot.
 - `support-avatar.webp`: supplied portrait, optimized to 180×180 (3× the 60 px slot), with the same centered crop.
 - Export imagery and filename are generated from the user's composition, replacing the example content in Figma.
+
+## Toasts (81:23937)
+- `toast-check.svg`: exact 16×16 green success icon.
+- `toast-info.svg`: exact 16×16 orange error/info icon.
+- `toast-close.svg`: exact 16×16 dismiss icon.
+- Toasts use a 300 px card, 12 px corners, 1.5 px top border, 10 px horizontal/14 px vertical padding, 6 px content gap, and the Figma shadow. Longer application messages wrap inside the same width.

@@ -1,3 +1,4 @@
+import {createToast} from './toast.mjs';
 import {mountTactileRanges} from './tactile-ranges.mjs';
 import {openFromTrigger,revealFromTrigger} from './trigger-motion.mjs';
 import {previewFrameKey} from './preview-cache.mjs';
@@ -28,7 +29,8 @@ let previewFrameID=null,lastPreviewTick=0,previewPaintKey='',previewBox=null,lis
 const totalDuration=()=>screens.length*settings.seconds;
 function outputSize(){return resolveSize(screens,settings)}
 function formatTime(t){const tenths=Math.round(t*10),minutes=Math.floor(tenths/600),seconds=(tenths%600)/10;return `${String(minutes).padStart(2,'0')}:${seconds.toFixed(1).padStart(4,'0')}`}
-function notify(message){$('#toast').textContent=message;$('#toast').classList.add('visible');clearTimeout(notify.timer);notify.timer=setTimeout(()=>$('#toast').classList.remove('visible'),4500)}
+const toast=createToast($('#toast'));
+function notify(message,type='error'){toast.show(message,type)}
 function setError(message){$('#uploadError').textContent=message;$('#uploadError').hidden=!message}
 function setPlaying(value){playing=value;cancelAnimationFrame(previewFrameID);previewFrameID=null;lastFrame=0;lastPreviewTick=0;if(value&&!document.hidden)previewFrameID=requestAnimationFrame(frame);if(value)$('#play').innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pause preview-icon" aria-hidden="true"><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></svg>';else $('#play').replaceChildren(assetIcon('35-1990-imgFrame2'));$('#play').setAttribute('aria-label',value?'Pause preview':'Play preview')}
 const ICONS={'35-1990-imgFrame2':'play','35-1990-imgFrame3':'restart','35-547-imgFrame1':'35-547-imgFrame2','35-3052-imgDefault':'remove','35-3052-imgHover':'remove-hover'};
@@ -116,7 +118,7 @@ function reorderScreen(from,to,restoreFocus=false){
   const next=moveSource(screens,from,to);if(next===screens)return;
   const name=screens[from].name;screens=next;settings.orderMode='custom';position=0;setPlaying(false);sync();save();
   if(restoreFocus)$('#imageList').children[to]?.querySelector('.drag-handle')?.focus();
-  notify(`Moved ${name} to position ${to+1}.`);
+  notify(`Moved ${name} to position ${to+1}.`,'success');
 }
 let sourceDrag=null;
 function startSourceDrag(event,row,index){
@@ -171,7 +173,7 @@ async function decodeAsset(blob,name,id=crypto.randomUUID()){
   const url=URL.createObjectURL(blob);
   try{const image=await imageFromURL(url);if(!image.naturalWidth||!image.naturalHeight)throw new Error('Empty image');return {id,name,blob,url,image,width:image.naturalWidth,height:image.naturalHeight,sourceVersion:2}}catch(e){URL.revokeObjectURL(url);throw e}
 }
-async function acceptFiles(fileList){await ready;setError('');const files=sortByFilename([...fileList]);if(screens.length>=MAX_IMAGES){setError('Your showreel already has 12 screens. Remove one to add another.');return}let errors=[],added=0;for(const file of files){if(screens.length>=MAX_IMAGES){errors.push('Only the first 12 valid screens were added.');break}if(!['image/png','image/jpeg','image/webp','image/svg+xml'].includes(file.type)){errors.push(`${file.name}: use PNG, JPG, WebP or SVG.`);continue}if(file.size>40*1024*1024){errors.push(`${file.name}: please keep each image under 40 MB.`);continue}const url=URL.createObjectURL(file);try{const image=await imageFromURL(url),w=image.naturalWidth,h=image.naturalHeight;if(!w||!h)throw new Error('Empty image');screens.push({id:crypto.randomUUID(),name:file.name,blob:file,url,image,width:w,height:h,sourceVersion:2});added++}catch{URL.revokeObjectURL(url);errors.push(`${file.name} could not be opened. Try exporting it again.`)}}$('#files').value='';if(added){if(settings.orderMode==='name')screens=sortByFilename(screens);ensureSizeSource();position=0;sync();save();setPlaying(!matchMedia('(prefers-reduced-motion: reduce)').matches);notify(`${added} screen${added===1?'':'s'} added. Your ${totalDuration().toFixed(1)}-second showreel is ready to preview.`)}setError(errors.join(' '))}
+async function acceptFiles(fileList){await ready;setError('');const files=sortByFilename([...fileList]);if(screens.length>=MAX_IMAGES){setError('Your showreel already has 12 screens. Remove one to add another.');return}let errors=[],added=0;for(const file of files){if(screens.length>=MAX_IMAGES){errors.push('Only the first 12 valid screens were added.');break}if(!['image/png','image/jpeg','image/webp','image/svg+xml'].includes(file.type)){errors.push(`${file.name}: use PNG, JPG, WebP or SVG.`);continue}if(file.size>40*1024*1024){errors.push(`${file.name}: please keep each image under 40 MB.`);continue}const url=URL.createObjectURL(file);try{const image=await imageFromURL(url),w=image.naturalWidth,h=image.naturalHeight;if(!w||!h)throw new Error('Empty image');screens.push({id:crypto.randomUUID(),name:file.name,blob:file,url,image,width:w,height:h,sourceVersion:2});added++}catch{URL.revokeObjectURL(url);errors.push(`${file.name} could not be opened. Try exporting it again.`)}}$('#files').value='';if(added){if(settings.orderMode==='name')screens=sortByFilename(screens);ensureSizeSource();position=0;sync();save();setPlaying(!matchMedia('(prefers-reduced-motion: reduce)').matches);notify(`${added} screen${added===1?'':'s'} added. Your ${totalDuration().toFixed(1)}-second showreel is ready to preview.`,'success')}setError(errors.join(' '))}
 function syncCompositionControls(width,height){
   const has=screens.length>0,showSize=has||settings.sizeMode==='custom';
   if(!pendingSizeError){$('#canvasWidth').value=showSize?width:'';$('#canvasHeight').value=showSize?height:''}
@@ -286,7 +288,7 @@ $('#exportFormat').onchange=async e=>{const value=e.target.value;await ready;set
 $('#screenDurationRange').oninput=async e=>{const v=Number(e.target.value);await ready;settings.seconds=v;timingChanged()};
 $('#resetTiming').onclick=async()=>{await ready;settings.seconds=DEFAULTS.seconds;timingChanged()};
 $('#resetTransition').onclick=async()=>{await ready;settings.feel='soft';settings.fade=Math.min(.5,settings.seconds*.8);sync();save()};
-$('#resetSettings').onclick=async()=>{await ready;presetRequest++;presetLoading=false;if(backgroundAsset&&!backgroundAsset.preset)URL.revokeObjectURL(backgroundAsset.url);backgroundAsset=null;settings={...DEFAULTS,orderMode:settings.orderMode,sizeSourceId:screens[0]?.id||null};pendingSizeError='';position=0;setPlaying(false);sync();save();notify('Settings reset. Your screens are kept.')};
+$('#resetSettings').onclick=async()=>{await ready;presetRequest++;presetLoading=false;if(backgroundAsset&&!backgroundAsset.preset)URL.revokeObjectURL(backgroundAsset.url);backgroundAsset=null;settings={...DEFAULTS,orderMode:settings.orderMode,sizeSourceId:screens[0]?.id||null};pendingSizeError='';position=0;setPlaying(false);sync();save();notify('Settings reset. Your screens are kept.','success')};
 $('#guideButton').onclick=()=>openFromTrigger($('#guide'),$('#guideButton'));
 $('#guide').addEventListener('click',event=>{if(event.target===$('#guide')){const r=event.target.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)event.target.close()}});
 let feedbackAnchor=null;
