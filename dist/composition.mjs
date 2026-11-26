@@ -15,9 +15,9 @@ export function fitRect(sourceWidth,sourceHeight,width,height,cover=false){
   const w=sourceWidth*scale,h=sourceHeight*scale;
   return {x:(width-w)/2,y:(height-h)/2,width:w,height:h};
 }
-export function previewDimensions(width,height,displayWidth=1280,displayHeight=900,pixelRatio=1){
-  const ratio=Math.max(1,Math.min(3,Number(pixelRatio)||1));
-  const scale=Math.min(1,displayWidth*ratio/width,displayHeight*ratio/height,Math.sqrt(16777216/(width*height)));
+export function previewDimensions(width,height,displayWidth=1280,displayHeight=900,pixelRatio=1,interactive=false){
+  const ratio=interactive?1:Math.max(1,Math.min(3,Number(pixelRatio)||1));
+  const scale=Math.min(1,displayWidth*ratio/width,displayHeight*ratio/height,Math.sqrt((interactive?786432:16777216)/(width*height)));
   return [Math.max(1,Math.round(width*scale)),Math.max(1,Math.round(height*scale))];
 }
 export function transitionEase(t,feel){
@@ -40,7 +40,7 @@ function paintImage(context,source,width,height,opacity=1,cover=false,settings={
   context.drawImage(source.image,rect.x,rect.y,rect.width,rect.height);context.restore();
 }
 export function renderComposition(context,width,height,time,screens,settings,background,makeCanvas=browserCanvas){
-  context.save();context.imageSmoothingEnabled=true;context.imageSmoothingQuality='high';context.globalAlpha=1;context.globalCompositeOperation='source-over';context.clearRect(0,0,width,height);
+  context.save();context.imageSmoothingEnabled=true;context.imageSmoothingQuality=settings.previewQuality||'high';context.globalAlpha=1;context.globalCompositeOperation='source-over';context.clearRect(0,0,width,height);
   const mode=settings.background||'light';
   if(mode!=='none'){
     context.fillStyle=mode==='solid'?settings.solidColor||BACKGROUNDS.light:BACKGROUNDS[mode]||BACKGROUNDS.light;
@@ -56,7 +56,7 @@ export function renderComposition(context,width,height,time,screens,settings,bac
     else{
       let layer=layers.get(context);
       if(!layer||layer.width!==width||layer.height!==height){const canvas=makeCanvas(width,height);layer={canvas,context:canvas.getContext('2d'),width,height};layers.set(context,layer)}
-      const c=layer.context;c.imageSmoothingEnabled=true;c.imageSmoothingQuality='high';c.clearRect(0,0,width,height);c.save();c.globalCompositeOperation='lighter';
+      const c=layer.context;c.imageSmoothingEnabled=true;c.imageSmoothingQuality=settings.previewQuality||'high';c.clearRect(0,0,width,height);c.save();c.globalCompositeOperation='lighter';
       paintImage(c,screens[index],width,height,1-alpha,false,settings);paintImage(c,screens[index+1],width,height,alpha,false,settings);c.restore();
       context.drawImage(layer.canvas,0,0);
     }

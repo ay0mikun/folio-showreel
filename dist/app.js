@@ -1,3 +1,4 @@
+import {videoEncoding} from './video-format.mjs';
 import {createAssetCache} from './asset-cache.mjs';
 import {createToast} from './toast.mjs';
 import {mountTactileRanges} from './tactile-ranges.mjs';
@@ -8,7 +9,7 @@ import {createFeedbackPrompt} from './feedback.mjs';
 import {mountColorPicker} from './color-picker.mjs?v=253716f844';
 import {gifFramePlan} from './gif-plan.mjs';
 import {sortByFilename,moveSource} from './source-order.mjs';
-import {resolveSize,sizeError,previewDimensions,renderComposition,GRADIENTS} from './composition.mjs?v=e5684a3a7b';
+import {resolveSize,sizeError,previewDimensions,renderComposition,GRADIENTS} from './composition.mjs?v=306888d011';
 'use strict';
 const elements=new Map();
 const $=selector=>{let element=elements.get(selector);if(!element){element=document.querySelector(selector);if(element)elements.set(selector,element)}return element};
@@ -27,6 +28,7 @@ for(const input of document.querySelectorAll('.number-unit input'))input.addEven
 const colorPicker=mountColorPicker($('#pickColor'),$('#colorPicker'),setSolidColor);
 let presetRequest=0,presetLoading=false,lastBackgroundMode=null;
 const presetCache=createAssetCache({load:loadPresetAsset,retain:(asset,key)=>asset===backgroundAsset||key===settings.backgroundPreset,dispose:asset=>{URL.revokeObjectURL(asset.url);asset.image.src=''}});
+let interactivePreview=false;
 let previewFrameID=null,lastPreviewTick=0,previewPaintKey='',previewBox=null,listSignature='';
 const totalDuration=()=>screens.length*settings.seconds;
 function outputSize(){return resolveSize(screens,settings)}
@@ -45,12 +47,12 @@ function updatePreview(){
   if(!screens.length)return;const [w,h]=outputSize();if(sizeError(w,h))return;
   if(!previewBox){const well=$('.canvas-well');previewBox=[Math.max(1,well.clientWidth-8),Math.max(1,well.clientHeight-8)]}
   const [aw,ah]=previewBox,scale=Math.min(1,aw/w,ah/h);
-  const [pw,ph]=previewDimensions(w,h,aw,ah,window.devicePixelRatio||1);
+  const [pw,ph]=previewDimensions(w,h,aw,ah,window.devicePixelRatio||1,interactivePreview);
   canvas.style.width=w*scale+'px';canvas.style.height=h*scale+'px';
   if(canvas.width!==pw||canvas.height!==ph){canvas.width=pw;canvas.height=ph;previewPaintKey=''}
   const index=Math.min(screens.length-1,Math.floor(position/settings.seconds));
-  const key=previewFrameKey(pw,ph,position,screens,settings,backgroundAsset);
-  if(key!==previewPaintKey){draw(context,pw,ph,position);previewPaintKey=key}
+  const key=previewFrameKey(pw,ph,position,screens,settings,backgroundAsset)+(interactivePreview?':edit':':final');
+  if(key!==previewPaintKey){renderComposition(context,pw,ph,position,screens,interactivePreview?{...settings,previewQuality:'medium'}:settings,backgroundAsset);previewPaintKey=key}
   const timeLabel=formatTime(position);if($('#currentTime').textContent!==timeLabel)$('#currentTime').textContent=timeLabel;$('#scrubber').value=position;updateRange($('#scrubber'));
   const status=`Screen ${index+1} of ${screens.length}`;if($('#previewStatus').textContent!==status)$('#previewStatus').textContent=status;
 }
@@ -64,8 +66,9 @@ function frame(now){
   if(position>=totalDuration()){setPlaying(false);return}
   previewFrameID=requestAnimationFrame(frame);
 }
-let syncFrame=null,paintFrame=null;
-function scheduleSync(){if(syncFrame===null)syncFrame=requestAnimationFrame(()=>{syncFrame=null;sync()})}
+let paintFrame=null,timingFrame=null,framingFrame=null;
+function scheduleTiming(){if(timingFrame===null)timingFrame=requestAnimationFrame(()=>{timingFrame=null;syncTimingControls();updatePreview()})}
+function scheduleFraming(){if(framingFrame===null)framingFrame=requestAnimationFrame(()=>{framingFrame=null;syncFramingControls();updatePreview()})}
 function schedulePreview(){if(paintFrame===null)paintFrame=requestAnimationFrame(()=>{paintFrame=null;updatePreview()})}
 function sync(){
   const has=screens.length>0,total=totalDuration(),[w,h]=outputSize();
@@ -74,25 +77,34 @@ function sync(){
   for(const id of ['play','restart','scrubber','export'])$('#'+id).disabled=!has||Boolean(pendingSizeError||sizeError(w,h));
   if(presetLoading&&settings.background==='image')$('#export').disabled=true;
   $('#clearAll').hidden=!has;
-  $('#durationLabel').textContent=formatTime(total);$('#scrubber').max=total||1;
-  position=Math.min(position,total);$('#currentTime').textContent=formatTime(position);$('#scrubber').value=position;
+  position=Math.min(position,total);syncTimingControls();
   syncCompositionControls(w,h);
-  $('#exportMeta').textContent=has?`${total.toFixed(1)} seconds · ${w} × ${h} · ${settings.format.toUpperCase()}`:'Add a screen to get started';
   $('#exportFormat').value=settings.format;
-  $('#screenDurationRange').value=settings.seconds;
-  $('#transitionLabel').textContent=settings.feel;
-  document.querySelectorAll('[data-feel]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.feel===settings.feel)));
-  $('#perScreenLabel').textContent=Number(settings.seconds.toFixed(2))+'s';$('#screenDuration').value=Number(settings.seconds.toFixed(3));
-  $('#totalDuration').value=Number(total.toFixed(2));$('#totalDuration').disabled=!has;$('#totalDuration').min=screens.length*.1;$('#totalDuration').max=screens.length*10;
+  $('#transitionLabel').textContent=settings.feel;document.querySelectorAll('[data-feel]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.feel===settings.feel)));
   $('#projectName').value=settings.projectName;$('#projectName').style.width=Math.min(238,Math.max(26,settings.projectName.length*7.3))+'px';
-  $('#projectExtension').textContent='.'+(settings.format==='video'?'mp4':settings.format);
-  for(const key of ['padding','radius']){$('#'+key).value=settings[key];$('#'+key+'Range').value=settings[key]}
-  document.querySelectorAll('.number-unit input').forEach(fitNumberInput);
-  document.querySelectorAll('input[type=range]').forEach(updateRange);
+  $('#projectExtension').textContent='.'+(settings.format==='video'?(videoEncoding(...outputSize(),type=>globalThis.MediaRecorder?.isTypeSupported(type))?.extension||'webm'):settings.format);
+  syncFramingControls();
   updateCompositionSize(screens.reduce((sum,screen)=>sum+screen.blob.size,0)+(backgroundAsset?.blob.size||0));
   if(!has){$('#previewStatus').textContent='Waiting for your first screen';setPlaying(false)}
   updatePreview();renderList();
 }
+function syncFramingControls(){for(const key of ['padding','radius']){const input=$('#'+key),range=$('#'+key+'Range');input.value=range.value=settings[key];fitNumberInput(input);updateRange(range)}}
+function syncTimingControls(){
+  const total=totalDuration(),has=screens.length>0;
+  $('#durationLabel').textContent=formatTime(total);$('#scrubber').max=total||1;
+  $('#currentTime').textContent=formatTime(position);$('#scrubber').value=position;updateRange($('#scrubber'));
+  $('#screenDurationRange').value=settings.seconds;updateRange($('#screenDurationRange'));
+  $('#perScreenLabel').textContent=Number(settings.seconds.toFixed(2))+'s';$('#screenDuration').value=Number(settings.seconds.toFixed(3));
+  $('#totalDuration').value=Number(total.toFixed(2));$('#totalDuration').disabled=!has;$('#totalDuration').min=screens.length*.1;$('#totalDuration').max=screens.length*10;
+  fitNumberInput($('#screenDuration'));fitNumberInput($('#totalDuration'));
+  const [w,h]=outputSize();$('#exportMeta').textContent=has?`${total.toFixed(1)} seconds · ${w} × ${h} · ${settings.format.toUpperCase()}`:'Add a screen to get started';
+}
+const lightweightTarget=target=>target.closest?.('.color-field,.hue-slider,#paddingRange,#radiusRange,#scrubber');
+function endPreviewInteraction(){if(!interactivePreview)return;interactivePreview=false;previewPaintKey='';schedulePreview()}
+document.addEventListener('pointerdown',event=>{if(lightweightTarget(event.target)){interactivePreview=true;schedulePreview()}},true);
+window.addEventListener('pointerup',endPreviewInteraction,{passive:true});window.addEventListener('pointercancel',endPreviewInteraction,{passive:true});window.addEventListener('blur',endPreviewInteraction);
+document.addEventListener('keydown',event=>{if(lightweightTarget(event.target)&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','PageUp','PageDown','Home','End'].includes(event.key))interactivePreview=true});
+document.addEventListener('keyup',endPreviewInteraction);
 function renderList(){
   const signature=screens.map(screen=>screen.id).join('|');if(signature===listSignature)return;listSignature=signature;
   const list=$('#imageList'),focused=document.activeElement.closest?.('.image-item'),focusIndex=focused?.dataset.index,focusClass=document.activeElement.dataset.action;
@@ -247,7 +259,7 @@ async function init(){
       settings={...DEFAULTS,...stored.settings};
       settings.padding=Math.max(0,Math.min(80,Number(settings.padding)||0));settings.radius=Math.max(0,Math.min(100,Number(settings.radius)||0));settings.gradient=Math.max(0,Math.min(GRADIENTS.length-1,Math.round(Number(settings.gradient)||0)));
       if(!/^#[0-9a-f]{6}$/i.test(settings.solidColor))settings.solidColor='#fefefe';settings.projectName=String(settings.projectName||'Name of file').slice(0,80);
-      if(!['soft','stiff'].includes(settings.feel))settings.feel='soft';if(!['video','gif','png'].includes(settings.format))settings.format='video';if(!['name','custom'].includes(settings.orderMode))settings.orderMode='name';
+      if(!['soft','stiff'].includes(settings.feel))settings.feel='soft';if(!['video','gif'].includes(settings.format))settings.format='video';if(!['name','custom'].includes(settings.orderMode))settings.orderMode='name';
       if(!['light','dark','none','image','solid','gradient'].includes(settings.background))settings.background='light';if(!['source','custom'].includes(settings.sizeMode))settings.sizeMode='source';
       settings.seconds=Math.max(.1,Math.min(10,Number(settings.seconds)||1.5));settings.fade=Math.max(.02,Math.min(3,settings.seconds*.8,Number(settings.fade)||.5));
       for(const entry of stored.screens.slice(0,MAX_IMAGES)){try{const asset=await decodeAsset(entry.blob,entry.name,entry.id);asset.sourceVersion=entry.sourceVersion||1;screens.push(asset)}catch{}}
@@ -262,12 +274,13 @@ async function init(){
 function save(){clearTimeout(saveTimer);if($('#saveStatus').textContent!=='Saving on this device…')$('#saveStatus').textContent='Saving on this device…';saveTimer=setTimeout(()=>{if(!db){$('#saveStatus').textContent='This session only';return}try{const tx=db.transaction('projects','readwrite');tx.objectStore('projects').put({version:2,settings,background:backgroundAsset&&settings.backgroundPreset===null?{name:backgroundAsset.name,blob:backgroundAsset.blob}:null,screens:screens.map(({id,name,width,height,blob,sourceVersion})=>({id,name,width,height,blob,sourceVersion}))},'current');tx.oncomplete=()=>$('#saveStatus').textContent='Saved automatically on this device';tx.onerror=()=>{$('#saveStatus').textContent='Could not save · keep this tab open';notify('Device storage is full. You can still create and download your video.')}}catch{$('#saveStatus').textContent='Could not save · keep this tab open'}},200)}
 const ready=init();document.fonts.ready.then(()=>ready).then(()=>sync());
 $('#addSources').onclick=$('#upload').onclick=$('#emptyUpload').onclick=()=>$('#files').click();$('#files').onchange=e=>acceptFiles(e.target.files);for(const area of [$('.source-panel'),$('#dropStage')]){area.ondragover=e=>{e.preventDefault();area.classList.add('dragover')};area.ondragleave=()=>area.classList.remove('dragover');area.ondrop=e=>{e.preventDefault();area.classList.remove('dragover');if(!rendering)acceptFiles(e.dataTransfer.files)}}
-$('#clearAll').onclick=()=>{screens.forEach(s=>URL.revokeObjectURL(s.url));screens=[];settings.orderMode='name';settings.sizeSourceId=null;pendingSizeError='';position=0;setError('');sync();save()};$('#play').onclick=()=>{if(position>=totalDuration())position=0;setPlaying(!playing);updatePreview()};$('#restart').onclick=()=>{position=0;setPlaying(true);updatePreview()};$('#scrubber').oninput=e=>{position=Number(e.target.value);setPlaying(false);updatePreview()};function timingChanged(){position=0;setPlaying(false);settings.fade=Math.min(settings.fade,settings.seconds*.8);scheduleSync();save()}
+$('#clearAll').onclick=()=>{screens.forEach(s=>URL.revokeObjectURL(s.url));screens=[];settings.orderMode='name';settings.sizeSourceId=null;pendingSizeError='';position=0;setError('');sync();save()};$('#play').onclick=()=>{if(position>=totalDuration())position=0;setPlaying(!playing);updatePreview()};$('#restart').onclick=()=>{position=0;setPlaying(true);updatePreview()};$('#scrubber').oninput=e=>{position=Number(e.target.value);setPlaying(false);updatePreview()};function timingChanged(persist=true){position=0;setPlaying(false);settings.fade=Math.min(settings.fade,settings.seconds*.8);scheduleTiming();if(persist)save()}
 $('#screenDuration').onchange=async e=>{const v=Number(e.target.value);await ready;settings.seconds=Math.min(10,Math.max(.1,Number.isFinite(v)&&v>0?v:1.5));timingChanged()};
 $('#totalDuration').onchange=async e=>{const v=Number(e.target.value);await ready;if(!screens.length)return;settings.seconds=Math.min(10,Math.max(.1,(Number.isFinite(v)&&v>0?v:totalDuration())/screens.length));timingChanged()};
 document.querySelectorAll('[data-feel]').forEach(button=>button.onclick=async()=>{await ready;settings.feel=button.dataset.feel;sync();save()});
 $('#exportFormat').onchange=async e=>{const value=e.target.value;await ready;settings.format=settings.background==='none'&&value==='video'?'gif':value;sync();save()};
-$('#screenDurationRange').oninput=async e=>{const v=Number(e.target.value);await ready;settings.seconds=v;timingChanged()};
+$('#screenDurationRange').oninput=async e=>{const v=Number(e.target.value);await ready;settings.seconds=v;timingChanged(false)};
+$('#screenDurationRange').addEventListener('change',save);
 $('#resetTiming').onclick=async()=>{await ready;settings.seconds=DEFAULTS.seconds;timingChanged()};
 $('#resetTransition').onclick=async()=>{await ready;settings.feel='soft';settings.fade=Math.min(.5,settings.seconds*.8);sync();save()};
 $('#resetSettings').onclick=async()=>{await ready;presetRequest++;presetLoading=false;if(backgroundAsset&&!backgroundAsset.preset)URL.revokeObjectURL(backgroundAsset.url);backgroundAsset=null;settings={...DEFAULTS,orderMode:settings.orderMode,sizeSourceId:screens[0]?.id||null};pendingSizeError='';position=0;setPlaying(false);sync();save();notify('Settings reset. Your screens are kept.','success')};
@@ -296,7 +309,7 @@ let exportStartGeometry=null;
 function prepareExportDialog(){
   exportMotion.reset();exportStartGeometry=null;imageReveal?.stop();const run=++revealRun;
   const dialog=$('#renderDialog');dialog.classList.remove('is-ready');$('#shareResult').hidden=true;
-  $('#exportFilename').textContent=downloadName(settings.format==='video'?'mp4':settings.format);
+  $('#exportFilename').textContent=downloadName(settings.format==='video'?(videoEncoding(...outputSize(),type=>globalThis.MediaRecorder?.isTypeSupported(type))?.extension||'webm'):settings.format);
   const [mediaWidth,mediaHeight]=outputSize(),mediaScale=Math.min(330/mediaWidth,220/mediaHeight);
   dialog.style.setProperty('--export-media-width',(mediaWidth*mediaScale/330*100)+'%');dialog.style.setProperty('--export-media-height',(mediaHeight*mediaScale/220*100)+'%');
   const poster=$('#exportPoster'),[w,h]=outputSize(),scale=Math.min(1,660/w,440/h);poster.width=Math.max(1,Math.round(w*scale));poster.height=Math.max(1,Math.round(h*scale));draw(poster.getContext('2d',{alpha:true}),poster.width,poster.height,position);
@@ -316,7 +329,7 @@ new MutationObserver(()=>{const value=$('#renderProgress').value;$('#renderDialo
 async function addWebmDuration(blob,duration){const bytes=new Uint8Array(await blob.arrayBuffer());function read(offset,id=false){if(offset>=bytes.length)return null;let mask=128,n=1;while(n<=8&&!(bytes[offset]&mask)){mask>>=1;n++}if(n>8||offset+n>bytes.length)return null;let value=id?bytes[offset]:bytes[offset]&(mask-1);for(let i=1;i<n;i++)value=value*256+bytes[offset+i];return {value,n}}
 function encodeSize(value,n){if(value>=2**(7*n)-1)return null;const b=new Uint8Array(n);let v=value;for(let i=n-1;i>=0;i--){b[i]=v%256;v=Math.floor(v/256)}b[0]|=1<<(8-n);return b}
 let offset=0,segment=null;while(offset<bytes.length){const id=read(offset,true);if(!id)break;const size=read(offset+id.n);if(!size)break;const start=offset+id.n+size.n;if(id.value===0x18538067){segment={start,size,offset:offset+id.n};break}offset=start+size.value}if(!segment)return blob;offset=segment.start;while(offset<bytes.length){const id=read(offset,true),size=id&&read(offset+id.n);if(!id||!size)break;const start=offset+id.n+size.n,end=start+size.value;if(end>bytes.length)break;if(id.value===0x1549a966){let scale=1000000,child=start;while(child<end){const cid=read(child,true),cs=cid&&read(child+cid.n);if(!cid||!cs)return blob;const pos=child+cid.n+cs.n;if(cid.value===0x4489)return blob;if(cid.value===0x2ad7b1){scale=0;for(let k=0;k<cs.value;k++)scale=scale*256+bytes[pos+k]}child=pos+cs.value}const newSize=encodeSize(size.value+11,size.n);if(!newSize)return blob;const durationEntry=new Uint8Array(11);durationEntry.set([0x44,0x89,0x88]);new DataView(durationEntry.buffer).setFloat64(3,duration*1e9/scale,false);const result=new Uint8Array(bytes.length+11);result.set(bytes.slice(0,offset+id.n));result.set(newSize,offset+id.n);result.set(bytes.slice(start,end),start);result.set(durationEntry,end);result.set(bytes.slice(end),end+11);return new Blob([result],{type:blob.type})}offset=end}return blob}
-async function exportVideo(){await ready;if(!screens.length||rendering)return;const [w,h]=outputSize();if(typeof MediaRecorder==='undefined'||!canvas.captureStream){notify('Video export is not supported in this browser. Please use a recent Chrome, Edge, or Safari.');return}const mime=(w%2||h%2?['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']:['video/mp4;codecs=avc1.420033','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']).find(m=>MediaRecorder.isTypeSupported(m));if(!mime){notify('This browser cannot encode video. Please try a recent Chrome or Edge.');return}prepareExportDialog();let recorder,stream,frameID,cancelled=false,hidden=false;const dialog=$('#renderDialog'),duration=totalDuration();setPlaying(false);position=0;updatePreview();rendering=true;document.body.classList.add('rendering');$('#renderTitle').textContent='Creating your reel...';$('#renderDescription').textContent='Keep this tab open while your video renders.';$('#renderProgress').value=0;$('#renderPercent').textContent='0%';$('#cancelRender').hidden=false;$('#download').hidden=$('#backToEditor').hidden=$('#renderedVideo').hidden=$('#renderedGif').hidden=true;$('#renderedGif').removeAttribute('src');$('#renderedVideo').pause();$('#renderedVideo').removeAttribute('src');openFromTrigger(dialog,$('#export'));cancelRender=()=>{cancelled=true;cancelAnimationFrame(frameID);if(recorder&&recorder.state!=='inactive')recorder.stop()};$('#cancelRender').onclick=()=>cancelRender?.();dialog.oncancel=e=>{e.preventDefault();cancelRender?.()};const onVisibility=()=>{if(document.hidden){hidden=true;cancelRender?.()}};document.addEventListener('visibilitychange',onVisibility);
+async function exportVideo(){await ready;if(!screens.length||rendering)return;const [w,h]=outputSize();if(typeof MediaRecorder==='undefined'||!canvas.captureStream){notify('Video export is not supported in this browser. Please use a recent Chrome, Edge, or Safari.');return}const encoding=videoEncoding(w,h,type=>MediaRecorder.isTypeSupported(type)),mime=encoding?.mimeType;if(!mime){notify('This browser cannot encode video. Please try a recent Chrome or Edge.');return}prepareExportDialog();let recorder,stream,frameID,cancelled=false,hidden=false;const dialog=$('#renderDialog'),duration=totalDuration();setPlaying(false);position=0;updatePreview();rendering=true;document.body.classList.add('rendering');$('#renderTitle').textContent='Creating your reel...';$('#renderDescription').textContent='Keep this tab open while your video renders.';$('#renderProgress').value=0;$('#renderPercent').textContent='0%';$('#cancelRender').hidden=false;$('#download').hidden=$('#backToEditor').hidden=$('#renderedVideo').hidden=$('#renderedGif').hidden=true;$('#renderedGif').removeAttribute('src');$('#renderedVideo').pause();$('#renderedVideo').removeAttribute('src');openFromTrigger(dialog,$('#export'));cancelRender=()=>{cancelled=true;cancelAnimationFrame(frameID);if(recorder&&recorder.state!=='inactive')recorder.stop()};$('#cancelRender').onclick=()=>cancelRender?.();dialog.oncancel=e=>{e.preventDefault();cancelRender?.()};const onVisibility=()=>{if(document.hidden){hidden=true;cancelRender?.()}};document.addEventListener('visibilitychange',onVisibility);
 try{const out=document.createElement('canvas');out.width=w;out.height=h;const c=out.getContext('2d',{alpha:false});if(!c||out.width!==w||out.height!==h)throw new Error('Unsupported canvas size');draw(c,w,h,0);stream=out.captureStream(FPS);const bitrate=Math.min(60_000_000,Math.max(10_000_000,Math.round(w*h*FPS*.18)));recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:bitrate});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};const stopped=new Promise((resolve,reject)=>{recorder.onstop=resolve;recorder.onerror=e=>reject(e.error||new Error('Video encoder error'))});recorder.start(200);const start=performance.now();let lastEncodedAt=start-1000/FPS;const tick=now=>{const t=Math.min(duration,(now-start)/1000);if(now-lastEncodedAt<1000/FPS&&t<duration&&!cancelled){frameID=requestAnimationFrame(tick);return}lastEncodedAt=now;draw(c,w,h,Math.min(t,duration-.001));position=t;const pct=Math.min(100,Math.round(t/duration*100));$('#renderProgress').value=pct;$('#renderPercent').textContent=pct+'%';if(t<duration&&!cancelled)frameID=requestAnimationFrame(tick);else if(recorder.state!=='inactive')recorder.stop()};frameID=requestAnimationFrame(tick);await stopped;if(cancelled){dialog.close();notify(hidden?'Rendering stopped because the tab was hidden. Keep it visible and try again.':'Video creation cancelled.');return}if(!chunks.length)throw new Error('No video frames');let blob=new Blob(chunks,{type:recorder.mimeType||mime});if(mime.includes('webm')){try{blob=await addWebmDuration(blob,duration)}catch{}}if(outputURL)URL.revokeObjectURL(outputURL);outputURL=URL.createObjectURL(blob);const ext=mime.includes('mp4')?'mp4':'webm';exportStartGeometry=exportMotion.capture();updateCompositionSize(blob.size);$('#download').href=outputURL;$('#download').download=downloadName(ext);$('#download').textContent=`Download ${ext.toUpperCase()} · ${(blob.size/1024/1024).toFixed(1)} MB`;$('#renderTitle').textContent='Your work, ready to show.';$('#renderDescription').textContent=`${screens.length} screen${screens.length===1?'':'s'} · ${duration.toFixed(1)} seconds · ${w} × ${h} · 30 fps`;$('#renderPercent').textContent='100%';$('#renderProgress').value=100;$('#download').hidden=$('#backToEditor').hidden=$('#renderedVideo').hidden=false;$('#renderedVideo').src=outputURL;$('#backToEditor').onclick=()=>{dialog.close();$('#renderedVideo').pause()};dialog.oncancel=null;finishExportDialog(blob);
 }catch(error){console.error(error);dialog.close();notify('Could not finish the video. Please try again in a recent Chrome or Edge.')}finally{cancelAnimationFrame(frameID);document.removeEventListener('visibilitychange',onVisibility);stream?.getTracks().forEach(track=>track.stop());cancelRender=null;rendering=false;document.body.classList.remove('rendering')}};
 
@@ -363,13 +376,13 @@ async function exportGif(){
   }catch(error){dialog.close();if(cancelled)notify('GIF export cancelled.');else{console.error(error);notify('GIF export failed. '+error.message)}}
   finally{worker?.terminate();if(pending)clearTimeout(pending.timer);cancelRender=null;rendering=false;document.body.classList.remove('rendering')}
 }
-$('#export').onclick=async()=>{await ready;if(rendering||!screens.length)return;const error=pendingSizeError||sizeError(...outputSize());if(error){notify(error);return}settings.format==='png'?await exportPng():settings.format==='gif'?await exportGif():await exportVideo()};
+$('#export').onclick=async()=>{await ready;if(rendering||!screens.length)return;const error=pendingSizeError||sizeError(...outputSize());if(error){notify(error);return}settings.format==='gif'?await exportGif():await exportVideo()};
 
 // The sidebar presents the same composition settings used by every export path.
 $('#projectName').onchange=async event=>{const value=event.target.value.trim().replace(/\.(mp4|webm|gif|png)$/i,'');await ready;settings.projectName=value||'Name of file';sync();save()};
 $('#projectName').onkeydown=event=>{if(event.key==='Enter')event.target.blur()};
 for(const key of ['padding','radius'])for(const suffix of ['', 'Range']){
-  $('#'+key+suffix).addEventListener(suffix?'input':'change',async event=>{const value=Number(event.target.value);await ready;settings[key]=Math.max(0,Math.min(key==='padding'?80:100,Number.isFinite(value)?value:0));sync();save()});
+  $('#'+key+suffix).addEventListener(suffix?'input':'change',async event=>{const value=Number(event.target.value);await ready;settings[key]=Math.max(0,Math.min(key==='padding'?80:100,Number.isFinite(value)?value:0));scheduleFraming();if(!suffix)save()});
 }
 document.querySelectorAll('[data-ratio]').forEach(button=>button.onclick=async()=>{
   await ready;const [rw,rh]=button.dataset.ratio.split(':').map(Number),[w,h]=outputSize(),long=Math.max(w,h),unit=long/Math.max(rw,rh);
@@ -378,19 +391,7 @@ document.querySelectorAll('[data-ratio]').forEach(button=>button.onclick=async()
   settings.sizeMode='custom';settings.width=width;settings.height=height;pendingSizeError='';sync();save();
 });
 document.querySelectorAll('[data-color]').forEach(button=>button.onclick=async()=>{await ready;settings.background='solid';setSolidColor(button.dataset.color);sync();save()});
-async function exportPng(){
-  if(!screens.length||rendering)return;prepareExportDialog();setPlaying(false);rendering=true;
-  try{
-    const [w,h]=outputSize(),out=document.createElement('canvas');out.width=w;out.height=h;draw(out.getContext('2d',{alpha:true}),w,h,position);
-    const blob=await new Promise((resolve,reject)=>out.toBlob(value=>value?resolve(value):reject(new Error('PNG encoding failed')),'image/png'));
-    if(outputURL)URL.revokeObjectURL(outputURL);outputURL=URL.createObjectURL(blob);exportStartGeometry=exportMotion.capture();updateCompositionSize(blob.size);
-    $('#download').href=outputURL;$('#download').download=downloadName('png');$('#download').textContent=`Download PNG · ${(blob.size/1024/1024).toFixed(1)} MB`;
-    $('#renderTitle').textContent='Your PNG is ready.';$('#renderDescription').textContent=`Current preview frame · ${w} × ${h}`;
-    $('#renderProgress').value=100;$('#renderPercent').textContent='100%';$('#cancelRender').hidden=true;$('#renderedVideo').hidden=true;$('#renderedVideo').pause();
-    $('#download').hidden=$('#backToEditor').hidden=$('#renderedGif').hidden=false;$('#renderedGif').alt='Exported composition frame';$('#renderedGif').src=outputURL;
-    $('#backToEditor').onclick=()=>$('#renderDialog').close();$('#renderDialog').oncancel=null;finishExportDialog(blob);openFromTrigger($('#renderDialog'),$('#export'));
-  }catch(error){console.error(error);notify('Could not export the PNG. Please try again.')}
-  finally{rendering=false}
-}
 
 mountTactileRanges();
+
+for(const id of ['paddingRange','radiusRange'])$('#'+id).addEventListener('change',save);

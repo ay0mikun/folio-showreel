@@ -3,7 +3,8 @@ export function mountTactileRanges(root=document){
   const reduced=matchMedia('(prefers-reduced-motion: reduce)');
   const animations=new WeakMap();
   for(const range of root.querySelectorAll('input[type="range"]')){
-    let previous=Number(range.value),timer;
+    let previous=Number(range.value),timer,lastFeedback=0;
+    const target=range.id==='screenDurationRange'?root.querySelector('#screenDuration'):range.id.endsWith('Range')?root.querySelector('#'+range.id.slice(0,-5)):range.id==='scrubber'?root.querySelector('#currentTime'):null;
     const start=()=>{previous=Number(range.value);range.classList.add('is-adjusting')};
     const end=()=>range.classList.remove('is-adjusting');
     range.addEventListener('pointerdown',start);
@@ -14,11 +15,11 @@ export function mountTactileRanges(root=document){
     range.addEventListener('input',()=>{
       const next=Number(range.value);if(next===previous)return;
       const direction=next>previous?1:-1;previous=next;
+      const now=performance.now();if(now-lastFeedback<80)return;lastFeedback=now;
       range.dataset.stepping='true';clearTimeout(timer);timer=setTimeout(()=>delete range.dataset.stepping,100);
-      const target=range.id==='screenDurationRange'?root.querySelector('#screenDuration'):range.id.endsWith('Range')?root.querySelector('#'+range.id.slice(0,-5)):range.id==='scrubber'?root.querySelector('#currentTime'):null;
       if(!target||reduced.matches)return;
-      animations.get(target)?.cancel();
-      const animation=target.animate([{transform:`translateY(${-direction}px)`,color:'#fefefe'},{transform:'translateY(0)',color:getComputedStyle(target).color}],{duration:100,easing:'cubic-bezier(.2,.8,.2,1)'});
+      if(animations.get(target)?.playState==='running')return;
+      const animation=target.animate([{transform:`translateY(${-direction*.6}px)`,opacity:.8},{transform:'translateY(0)',opacity:1}],{duration:100,easing:'cubic-bezier(.2,.8,.2,1)'});
       animations.set(target,animation);
     });
   }

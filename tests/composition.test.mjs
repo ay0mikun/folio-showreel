@@ -55,3 +55,5 @@ test('Retina preview uses the rendered artboard size and display pixel density',
   const [w,h]=previewDimensions(6000,4000,1800,1200,2);assert.ok(w>1280&&h>900);assert.ok(Math.abs(w/h-1.5)<.002);
   assert.deepEqual(previewDimensions(600,400,1000,800,2),[600,400]);
 });
+
+test('interactive previews are bounded while settled Retina previews retain resolution',()=>{const moving=previewDimensions(6000,4000,1800,1200,2,true),settled=previewDimensions(6000,4000,1800,1200,2);assert.ok(moving[0]*moving[1]<790000);assert.ok(settled[0]*settled[1]>moving[0]*moving[1]*4);assert.ok(Math.abs(moving[0]/moving[1]-1.5)<.003);assert.deepEqual(resolveSize([],{sizeMode:'custom',width:6000,height:4000}),[6000,4000])});
