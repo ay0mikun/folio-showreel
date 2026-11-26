@@ -1,7 +1,8 @@
+import {openFromTrigger,revealFromTrigger} from './trigger-motion.mjs';
 import {previewFrameKey} from './preview-cache.mjs';
-import {createExportMotion} from './export-motion.mjs';
+import {createExportMotion} from './export-motion.mjs?v=6c8f9d2f73';
 import {createFeedbackPrompt} from './feedback.mjs';
-import {mountColorPicker} from './color-picker.mjs?v=07e3a5ca3d';
+import {mountColorPicker} from './color-picker.mjs?v=253716f844';
 import {gifFramePlan} from './gif-plan.mjs';
 import {sortByFilename,moveSource} from './source-order.mjs';
 import {resolveSize,sizeError,previewDimensions,renderComposition,GRADIENTS} from './composition.mjs?v=e5684a3a7b';
@@ -11,7 +12,7 @@ const $=s=>document.querySelector(s);
 document.addEventListener('keydown',event=>{if(event.key==='Tab')document.documentElement.dataset.keyboardFocus=''},true);
 document.addEventListener('pointerdown',()=>{delete document.documentElement.dataset.keyboardFocus},true);
 const FPS=30,MAX_IMAGES=12;
-const DEFAULTS={seconds:.6,fade:.48,feel:'soft',format:'gif',orderMode:'name',background:'none',solidColor:'#fefefe',gradient:0,backgroundPreset:null,padding:8,radius:0,projectName:'Name of file',sizeMode:'source',width:null,height:null,sizeSourceId:null};
+const DEFAULTS={seconds:.6,fade:.48,feel:'soft',format:'video',orderMode:'name',background:'solid',solidColor:'#fefefe',gradient:0,backgroundPreset:null,padding:8,radius:0,projectName:'Name of file',sizeMode:'source',width:null,height:null,sizeSourceId:null};
 let screens=[],settings={...DEFAULTS},backgroundAsset=null,pendingSizeError='',playing=false,position=0,lastFrame=0,db=null,saveTimer,outputURL=null,rendering=false,cancelRender=null;
 const canvas=$('#preview'),context=canvas.getContext('2d',{alpha:true});
 function fitNumberInput(input){
@@ -20,7 +21,7 @@ function fitNumberInput(input){
 }
 for(const input of document.querySelectorAll('.number-unit input'))input.addEventListener('input',()=>fitNumberInput(input));
 const colorPicker=mountColorPicker($('#pickColor'),$('#colorPicker'),setSolidColor);
-let presetRequest=0,presetLoading=false;
+let presetRequest=0,presetLoading=false,lastBackgroundMode=null;
 const presetCache=new Map();
 let previewFrameID=null,lastPreviewTick=0,previewPaintKey='',previewBox=null,listSignature='';
 const totalDuration=()=>screens.length*settings.seconds;
@@ -184,6 +185,7 @@ function syncCompositionControls(width,height){
   const selectedMode=['light','dark'].includes(settings.background)?'solid':settings.background==='gradient'?'image':settings.background;
   document.querySelectorAll('[data-background]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.background===selectedMode)));
   $('#transparentOptions').hidden=selectedMode!=='none';$('#imageBackgroundOptions').hidden=selectedMode!=='image';$('#solidOptions').hidden=selectedMode!=='solid';
+  if(lastBackgroundMode!==null&&lastBackgroundMode!==selectedMode){const panel=selectedMode==='none'?$('#transparentOptions'):selectedMode==='image'?$('#imageBackgroundOptions'):$('#solidOptions');revealFromTrigger(panel,$(`[data-background="${selectedMode}"]`))}lastBackgroundMode=selectedMode;
   const color=settings.background==='dark'?'#0e0e0e':settings.background==='light'?'#fefefe':settings.solidColor;
   colorPicker.setColor(color);
   document.querySelectorAll('[data-color]').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.color.toLowerCase()===color.toLowerCase())));
@@ -284,9 +286,11 @@ $('#screenDurationRange').oninput=async e=>{const v=Number(e.target.value);await
 $('#resetTiming').onclick=async()=>{await ready;settings.seconds=DEFAULTS.seconds;timingChanged()};
 $('#resetTransition').onclick=async()=>{await ready;settings.feel='soft';settings.fade=Math.min(.5,settings.seconds*.8);sync();save()};
 $('#resetSettings').onclick=async()=>{await ready;presetRequest++;presetLoading=false;if(backgroundAsset&&!backgroundAsset.preset)URL.revokeObjectURL(backgroundAsset.url);backgroundAsset=null;settings={...DEFAULTS,orderMode:settings.orderMode,sizeSourceId:screens[0]?.id||null};pendingSizeError='';position=0;setPlaying(false);sync();save();notify('Settings reset. Your screens are kept.')};
-$('#guideButton').onclick=()=>$('#guide').showModal();
+$('#guideButton').onclick=()=>openFromTrigger($('#guide'),$('#guideButton'));
 $('#guide').addEventListener('click',event=>{if(event.target===$('#guide')){const r=event.target.getBoundingClientRect();if(event.clientX<r.left||event.clientX>r.right||event.clientY<r.top||event.clientY>r.bottom)event.target.close()}});
-const feedback=createFeedbackPrompt({canShow:()=>!document.hidden&&!rendering&&!document.querySelector('dialog[open]')&&!document.querySelector('#colorPicker:popover-open'),show:()=>{setPlaying(false);$('#supportDialog').showModal()}});
+let feedbackAnchor=null;
+document.addEventListener('click',event=>{const trigger=event.target.closest('#download,#backToEditor');if(trigger)feedbackAnchor=trigger.getBoundingClientRect()},true);
+const feedback=createFeedbackPrompt({canShow:()=>!document.hidden&&!rendering&&!document.querySelector('dialog[open]')&&!document.querySelector('#colorPicker:popover-open'),show:()=>{setPlaying(false);openFromTrigger($('#supportDialog'),feedbackAnchor);feedbackAnchor=null}});
 for(const event of ['pointerdown','pointermove','keydown','input','wheel'])document.addEventListener(event,()=>feedback.activity(),{passive:true});
 document.addEventListener('visibilitychange',()=>document.hidden?feedback.stop():feedback.activity());
 ready.then(()=>feedback.activity());
@@ -301,6 +305,8 @@ function prepareExportDialog(){
   exportMotion.reset();exportStartGeometry=null;
   const dialog=$('#renderDialog');dialog.classList.remove('is-ready');$('#shareResult').hidden=true;
   $('#exportFilename').textContent=downloadName(settings.format==='video'?'mp4':settings.format);
+  const [mediaWidth,mediaHeight]=outputSize(),mediaScale=Math.min(330/mediaWidth,220/mediaHeight);
+  dialog.style.setProperty('--export-media-width',(mediaWidth*mediaScale/330*100)+'%');dialog.style.setProperty('--export-media-height',(mediaHeight*mediaScale/220*100)+'%');
   const poster=$('#exportPoster'),[w,h]=outputSize(),scale=Math.min(1,660/w,440/h);poster.width=Math.max(1,Math.round(w*scale));poster.height=Math.max(1,Math.round(h*scale));draw(poster.getContext('2d',{alpha:true}),poster.width,poster.height,position);
 }
 function finishExportDialog(blob){
@@ -315,7 +321,7 @@ new MutationObserver(()=>$('#renderDialog').style.setProperty('--export-progress
 async function addWebmDuration(blob,duration){const bytes=new Uint8Array(await blob.arrayBuffer());function read(offset,id=false){if(offset>=bytes.length)return null;let mask=128,n=1;while(n<=8&&!(bytes[offset]&mask)){mask>>=1;n++}if(n>8||offset+n>bytes.length)return null;let value=id?bytes[offset]:bytes[offset]&(mask-1);for(let i=1;i<n;i++)value=value*256+bytes[offset+i];return {value,n}}
 function encodeSize(value,n){if(value>=2**(7*n)-1)return null;const b=new Uint8Array(n);let v=value;for(let i=n-1;i>=0;i--){b[i]=v%256;v=Math.floor(v/256)}b[0]|=1<<(8-n);return b}
 let offset=0,segment=null;while(offset<bytes.length){const id=read(offset,true);if(!id)break;const size=read(offset+id.n);if(!size)break;const start=offset+id.n+size.n;if(id.value===0x18538067){segment={start,size,offset:offset+id.n};break}offset=start+size.value}if(!segment)return blob;offset=segment.start;while(offset<bytes.length){const id=read(offset,true),size=id&&read(offset+id.n);if(!id||!size)break;const start=offset+id.n+size.n,end=start+size.value;if(end>bytes.length)break;if(id.value===0x1549a966){let scale=1000000,child=start;while(child<end){const cid=read(child,true),cs=cid&&read(child+cid.n);if(!cid||!cs)return blob;const pos=child+cid.n+cs.n;if(cid.value===0x4489)return blob;if(cid.value===0x2ad7b1){scale=0;for(let k=0;k<cs.value;k++)scale=scale*256+bytes[pos+k]}child=pos+cs.value}const newSize=encodeSize(size.value+11,size.n);if(!newSize)return blob;const durationEntry=new Uint8Array(11);durationEntry.set([0x44,0x89,0x88]);new DataView(durationEntry.buffer).setFloat64(3,duration*1e9/scale,false);const result=new Uint8Array(bytes.length+11);result.set(bytes.slice(0,offset+id.n));result.set(newSize,offset+id.n);result.set(bytes.slice(start,end),start);result.set(durationEntry,end);result.set(bytes.slice(end),end+11);return new Blob([result],{type:blob.type})}offset=end}return blob}
-async function exportVideo(){await ready;if(!screens.length||rendering)return;const [w,h]=outputSize();if(typeof MediaRecorder==='undefined'||!canvas.captureStream){notify('Video export is not supported in this browser. Please use a recent Chrome, Edge, or Safari.');return}const mime=(w%2||h%2?['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']:['video/mp4;codecs=avc1.420033','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']).find(m=>MediaRecorder.isTypeSupported(m));if(!mime){notify('This browser cannot encode video. Please try a recent Chrome or Edge.');return}prepareExportDialog();let recorder,stream,frameID,cancelled=false,hidden=false;const dialog=$('#renderDialog'),duration=totalDuration();setPlaying(false);position=0;updatePreview();rendering=true;document.body.classList.add('rendering');$('#renderTitle').textContent='Creating your reel...';$('#renderDescription').textContent='Keep this tab open while your video renders.';$('#renderProgress').value=0;$('#renderPercent').textContent='0%';$('#cancelRender').hidden=false;$('#download').hidden=$('#backToEditor').hidden=$('#renderedVideo').hidden=$('#renderedGif').hidden=true;$('#renderedGif').removeAttribute('src');$('#renderedVideo').pause();$('#renderedVideo').removeAttribute('src');dialog.showModal();cancelRender=()=>{cancelled=true;cancelAnimationFrame(frameID);if(recorder&&recorder.state!=='inactive')recorder.stop()};$('#cancelRender').onclick=()=>cancelRender?.();dialog.oncancel=e=>{e.preventDefault();cancelRender?.()};const onVisibility=()=>{if(document.hidden){hidden=true;cancelRender?.()}};document.addEventListener('visibilitychange',onVisibility);
+async function exportVideo(){await ready;if(!screens.length||rendering)return;const [w,h]=outputSize();if(typeof MediaRecorder==='undefined'||!canvas.captureStream){notify('Video export is not supported in this browser. Please use a recent Chrome, Edge, or Safari.');return}const mime=(w%2||h%2?['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']:['video/mp4;codecs=avc1.420033','video/mp4','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm']).find(m=>MediaRecorder.isTypeSupported(m));if(!mime){notify('This browser cannot encode video. Please try a recent Chrome or Edge.');return}prepareExportDialog();let recorder,stream,frameID,cancelled=false,hidden=false;const dialog=$('#renderDialog'),duration=totalDuration();setPlaying(false);position=0;updatePreview();rendering=true;document.body.classList.add('rendering');$('#renderTitle').textContent='Creating your reel...';$('#renderDescription').textContent='Keep this tab open while your video renders.';$('#renderProgress').value=0;$('#renderPercent').textContent='0%';$('#cancelRender').hidden=false;$('#download').hidden=$('#backToEditor').hidden=$('#renderedVideo').hidden=$('#renderedGif').hidden=true;$('#renderedGif').removeAttribute('src');$('#renderedVideo').pause();$('#renderedVideo').removeAttribute('src');openFromTrigger(dialog,$('#export'));cancelRender=()=>{cancelled=true;cancelAnimationFrame(frameID);if(recorder&&recorder.state!=='inactive')recorder.stop()};$('#cancelRender').onclick=()=>cancelRender?.();dialog.oncancel=e=>{e.preventDefault();cancelRender?.()};const onVisibility=()=>{if(document.hidden){hidden=true;cancelRender?.()}};document.addEventListener('visibilitychange',onVisibility);
 try{const out=document.createElement('canvas');out.width=w;out.height=h;const c=out.getContext('2d',{alpha:false});if(!c||out.width!==w||out.height!==h)throw new Error('Unsupported canvas size');draw(c,w,h,0);stream=out.captureStream(FPS);const bitrate=Math.min(60_000_000,Math.max(10_000_000,Math.round(w*h*FPS*.18)));recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:bitrate});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};const stopped=new Promise((resolve,reject)=>{recorder.onstop=resolve;recorder.onerror=e=>reject(e.error||new Error('Video encoder error'))});recorder.start(200);const start=performance.now();let lastEncodedAt=start-1000/FPS;const tick=now=>{const t=Math.min(duration,(now-start)/1000);if(now-lastEncodedAt<1000/FPS&&t<duration&&!cancelled){frameID=requestAnimationFrame(tick);return}lastEncodedAt=now;draw(c,w,h,Math.min(t,duration-.001));position=t;const pct=Math.min(100,Math.round(t/duration*100));$('#renderProgress').value=pct;$('#renderPercent').textContent=pct+'%';if(t<duration&&!cancelled)frameID=requestAnimationFrame(tick);else if(recorder.state!=='inactive')recorder.stop()};frameID=requestAnimationFrame(tick);await stopped;if(cancelled){dialog.close();notify(hidden?'Rendering stopped because the tab was hidden. Keep it visible and try again.':'Video creation cancelled.');return}if(!chunks.length)throw new Error('No video frames');let blob=new Blob(chunks,{type:recorder.mimeType||mime});if(mime.includes('webm')){try{blob=await addWebmDuration(blob,duration)}catch{}}if(outputURL)URL.revokeObjectURL(outputURL);outputURL=URL.createObjectURL(blob);const ext=mime.includes('mp4')?'mp4':'webm';exportStartGeometry=exportMotion.capture();updateCompositionSize(blob.size);$('#download').href=outputURL;$('#download').download=downloadName(ext);$('#download').textContent=`Download ${ext.toUpperCase()} · ${(blob.size/1024/1024).toFixed(1)} MB`;$('#renderTitle').textContent='Your work, ready to show.';$('#renderDescription').textContent=`${screens.length} screen${screens.length===1?'':'s'} · ${duration.toFixed(1)} seconds · ${w} × ${h} · 30 fps`;$('#renderPercent').textContent='100%';$('#renderProgress').value=100;$('#download').hidden=$('#backToEditor').hidden=$('#renderedVideo').hidden=false;$('#renderedVideo').src=outputURL;$('#backToEditor').onclick=()=>{dialog.close();$('#renderedVideo').pause()};dialog.oncancel=null;finishExportDialog(blob);
 }catch(error){console.error(error);dialog.close();notify('Could not finish the video. Please try again in a recent Chrome or Edge.')}finally{cancelAnimationFrame(frameID);document.removeEventListener('visibilitychange',onVisibility);stream?.getTracks().forEach(track=>track.stop());cancelRender=null;rendering=false;document.body.classList.remove('rendering')}};
 
@@ -330,7 +336,7 @@ async function exportGif(){
   $('#renderProgress').value=0;$('#renderPercent').textContent='0%';$('#cancelRender').hidden=false;
   $('#download').hidden=$('#backToEditor').hidden=$('#renderedVideo').hidden=$('#renderedGif').hidden=true;
   $('#renderedVideo').pause();$('#renderedVideo').removeAttribute('src');$('#renderedGif').removeAttribute('src');
-  dialog.showModal();
+  openFromTrigger(dialog,$('#export'));
   cancelRender=()=>{cancelled=true;worker?.terminate();if(pending){clearTimeout(pending.timer);pending.reject(new DOMException('Cancelled','AbortError'));pending=null}};
   $('#cancelRender').onclick=()=>cancelRender?.();dialog.oncancel=e=>{e.preventDefault();cancelRender?.()};
   try{
@@ -387,7 +393,7 @@ async function exportPng(){
     $('#renderTitle').textContent='Your PNG is ready.';$('#renderDescription').textContent=`Current preview frame · ${w} × ${h}`;
     $('#renderProgress').value=100;$('#renderPercent').textContent='100%';$('#cancelRender').hidden=true;$('#renderedVideo').hidden=true;$('#renderedVideo').pause();
     $('#download').hidden=$('#backToEditor').hidden=$('#renderedGif').hidden=false;$('#renderedGif').alt='Exported composition frame';$('#renderedGif').src=outputURL;
-    $('#backToEditor').onclick=()=>$('#renderDialog').close();$('#renderDialog').oncancel=null;finishExportDialog(blob);$('#renderDialog').showModal();
+    $('#backToEditor').onclick=()=>$('#renderDialog').close();$('#renderDialog').oncancel=null;finishExportDialog(blob);openFromTrigger($('#renderDialog'),$('#export'));
   }catch(error){console.error(error);notify('Could not export the PNG. Please try again.')}
   finally{rendering=false}
 }

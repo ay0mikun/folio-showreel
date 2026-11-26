@@ -1,3 +1,4 @@
+import {triggerOrigin} from './trigger-motion.mjs';
 // Small, dependency-free HSV picker matching the supplied ASCIInator reference.
 export function hsvToHex(h,s,v){
   h=((h%360)+360)%360;s=Math.max(0,Math.min(1,s));v=Math.max(0,Math.min(1,v));
@@ -22,7 +23,7 @@ export function mountColorPicker(trigger,panel,onChange){
   field.onkeydown=event=>{const step=event.shiftKey?.1:.01;if(event.key==='ArrowLeft')hsv.s-=step;else if(event.key==='ArrowRight')hsv.s+=step;else if(event.key==='ArrowUp')hsv.v+=step;else if(event.key==='ArrowDown')hsv.v-=step;else return;event.preventDefault();hsv.s=Math.max(0,Math.min(1,hsv.s));hsv.v=Math.max(0,Math.min(1,hsv.v));emit()};
   hue.oninput=()=>{hsv.h=Number(hue.value);emit()};
   for(const color of colors){const button=document.createElement('button');button.type='button';button.style.background=color;button.setAttribute('aria-label',color);button.onclick=()=>{hsv=hexToHsv(color);emit()};palette.append(button)}
-  function place(){const r=trigger.getBoundingClientRect(),width=256,left=Math.max(8,Math.min(r.left,innerWidth-width-8)),height=panel.getBoundingClientRect().height;panel.style.left=left+'px';panel.style.top=(r.top-height-8>=8?r.top-height-8:Math.min(innerHeight-height-8,r.bottom+8))+'px'}
+  function place(){const r=trigger.getBoundingClientRect(),width=256,left=Math.max(8,Math.min(r.left,innerWidth-width-8)),height=panel.offsetHeight;panel.style.left=left+'px';const top=r.top-height-8>=8?r.top-height-8:Math.min(innerHeight-height-8,r.bottom+8);panel.style.top=top+'px';panel.style.setProperty('--trigger-origin',triggerOrigin(r,{left,top}))}
   panel.addEventListener('toggle',()=>{trigger.setAttribute('aria-expanded',String(panel.matches(':popover-open')));if(panel.matches(':popover-open'))place()});
   const close=()=>{if(panel.matches(':popover-open'))panel.hidePopover()};window.addEventListener('resize',close);trigger.closest('.inspector').addEventListener('scroll',close,{passive:true});
   return {setColor(color){const next=hexToHsv(color);if(next.s===0)next.h=hsv.h;hsv=next;paint()}};

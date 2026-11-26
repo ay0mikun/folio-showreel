@@ -36,5 +36,5 @@ Preset images come from Figma component 68:7032. The user authorized optimizing 
 - `export-loader.svg`: 18×18 rendering indicator.
 - `export-cancel.svg`: 16×16 cancel icon.
 - `share-x.svg`: 13×13 asset centered in the 16×16 share slot.
-- `support-avatar.png`: supplied portrait, cropped into the 60×60 gratitude slot.
+- `support-avatar.webp`: supplied portrait, optimized to 180×180 (3× the 60 px slot), with the same centered crop.
 - Export imagery and filename are generated from the user's composition, replacing the example content in Figma.
