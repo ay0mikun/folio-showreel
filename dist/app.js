@@ -3,6 +3,9 @@ import {sortByFilename,moveSource} from './source-order.mjs';
 import {resolveSize,sizeError,previewDimensions,renderComposition,GRADIENTS} from './composition.mjs';
 'use strict';
 const $=s=>document.querySelector(s);
+// Text fields can match :focus-visible after a click; rings follow Tab navigation only.
+document.addEventListener('keydown',event=>{if(event.key==='Tab')document.documentElement.dataset.keyboardFocus=''},true);
+document.addEventListener('pointerdown',()=>{delete document.documentElement.dataset.keyboardFocus},true);
 const FPS=30,MAX_IMAGES=12;
 const DEFAULTS={seconds:.6,fade:.48,feel:'soft',format:'video',orderMode:'name',background:'light',solidColor:'#fefefe',gradient:0,padding:0,radius:0,projectName:'Name of file',sizeMode:'source',width:null,height:null,sizeSourceId:null};
 let screens=[],settings={...DEFAULTS},backgroundAsset=null,pendingSizeError='',playing=false,position=0,lastFrame=0,db=null,saveTimer,outputURL=null,rendering=false,cancelRender=null;
