@@ -311,12 +311,15 @@ function prepareExportDialog(){
   $('#exportFilename').textContent=downloadName(settings.format==='video'?(videoEncoding(...outputSize(),type=>globalThis.MediaRecorder?.isTypeSupported(type))?.extension||'webm'):settings.format);
   const [mediaWidth,mediaHeight]=outputSize(),mediaScale=Math.min(330/mediaWidth,220/mediaHeight);
   dialog.style.setProperty('--export-media-width',(mediaWidth*mediaScale/330*100)+'%');dialog.style.setProperty('--export-media-height',(mediaHeight*mediaScale/220*100)+'%');
-  const poster=$('#exportPoster'),[w,h]=outputSize(),scale=Math.min(1,660/w,440/h);poster.width=Math.max(1,Math.round(w*scale));poster.height=Math.max(1,Math.round(h*scale));draw(poster.getContext('2d',{alpha:true}),poster.width,poster.height,position);
+  const poster=$('#exportPoster'),[w,h]=outputSize(),scale=Math.min(1,660/w,440/h);poster.width=Math.max(1,Math.round(w*scale));poster.height=Math.max(1,Math.round(h*scale));draw(poster.getContext('2d',{alpha:true}),poster.width,poster.height,0);
+  $('#renderedVideo').poster=poster.toDataURL('image/png');
   dialog.classList.add('reveal-pending');
   warmImageReveal().then(({createImageReveal})=>{if(run!==revealRun||!rendering||dialog.classList.contains('is-ready'))return;imageReveal??=createImageReveal(dialog);imageReveal.start();imageReveal.progress($('#renderProgress').value/100)}).catch(()=>dialog.classList.remove('reveal-pending'));
 }
 function finishExportDialog(blob){
   imageReveal?.finish();$('#renderDialog').classList.remove('reveal-pending');
+  // Keep the same first-frame canvas visible through completion.
+  $('#renderedVideo').hidden=$('#renderedGif').hidden=true;$('#renderedVideo').pause();
   const previous=exportStartGeometry||exportMotion.capture();exportStartGeometry=null;
   $('#cancelRender').hidden=true;$('#renderDialog').classList.add('is-ready');$('#shareResult').hidden=false;$('#renderTitle').textContent='Your reel is ready!';
   $('#exportFilename').textContent=$('#download').download;$('#download').textContent=`Download · ${(blob.size/1024/1024).toFixed(1)} MB`;
