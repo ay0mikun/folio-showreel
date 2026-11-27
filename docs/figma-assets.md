@@ -43,4 +43,4 @@ Preset images come from Figma component 68:7032. The user authorized optimizing 
 - `toast-check.svg`: exact 16×16 green success icon.
 - `toast-info.svg`: exact 16×16 orange error/info icon.
 - `toast-close.svg`: exact 16×16 dismiss icon.
-- Toasts use a 300 px card, 12 px corners, 1.5 px top border, 10 px horizontal/14 px vertical padding, 6 px content gap, and the Figma shadow. Longer application messages wrap inside the same width.
+- Toasts use a minimum 300 px card, 12 px corners, 1.5 px top border, 10 px horizontal/14 px vertical padding, 6 px content gap, and the Figma shadow. Cards grow to keep messages on one line, with 60 px before the dismiss icon. Messages exceeding the viewport are truncated visually.

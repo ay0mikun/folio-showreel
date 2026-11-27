@@ -10,7 +10,6 @@ import {mountColorPicker} from './color-picker.mjs?v=e9540a853b';
 import {gifFramePlan} from './gif-plan.mjs';
 import {sortByFilename,moveSource} from './source-order.mjs';
 import {resolveSize,sizeError,previewDimensions,renderComposition,GRADIENTS} from './composition.mjs?v=306888d011';
-'use strict';
 const elements=new Map();
 const $=selector=>{let element=elements.get(selector);if(!element){element=document.querySelector(selector);if(element)elements.set(selector,element)}return element};
 // Text fields can match :focus-visible after a click; rings follow Tab navigation only.
@@ -149,7 +148,7 @@ function sourcePointerMove(event){
     d.ghost=d.row.cloneNode(true);d.ghost.className='image-item source-drag-ghost';d.ghost.setAttribute('aria-hidden','true');d.ghost.inert=true;d.ghost.style.width=rect.width+'px';document.body.append(d.ghost);
     sourceDragTick();
   }
-  if(d.active){event.preventDefault();updateSourceTarget()}
+  if(d.active)event.preventDefault()
 }
 function updateSourceTarget(){
   const d=sourceDrag;if(!d?.active)return;
@@ -185,7 +184,7 @@ async function decodeAsset(blob,name,id=crypto.randomUUID()){
   const url=URL.createObjectURL(blob);
   try{const image=await imageFromURL(url);if(!image.naturalWidth||!image.naturalHeight)throw new Error('Empty image');return {id,name,blob,url,image,width:image.naturalWidth,height:image.naturalHeight,sourceVersion:2}}catch(e){URL.revokeObjectURL(url);throw e}
 }
-async function acceptFiles(fileList){await ready;setError('');const files=sortByFilename([...fileList]);if(screens.length>=MAX_IMAGES){setError('Your showreel already has 12 screens. Remove one to add another.');return}let errors=[],added=0;for(const file of files){if(screens.length>=MAX_IMAGES){errors.push('Only the first 12 valid screens were added.');break}if(!['image/png','image/jpeg','image/webp','image/svg+xml'].includes(file.type)){errors.push(`${file.name}: use PNG, JPG, WebP or SVG.`);continue}if(file.size>40*1024*1024){errors.push(`${file.name}: please keep each image under 40 MB.`);continue}const url=URL.createObjectURL(file);try{const image=await imageFromURL(url),w=image.naturalWidth,h=image.naturalHeight;if(!w||!h)throw new Error('Empty image');screens.push({id:crypto.randomUUID(),name:file.name,blob:file,url,image,width:w,height:h,sourceVersion:2});added++}catch{URL.revokeObjectURL(url);errors.push(`${file.name} could not be opened. Try exporting it again.`)}}$('#files').value='';if(added){if(settings.orderMode==='name')screens=sortByFilename(screens);ensureSizeSource();position=0;sync();save();setPlaying(!matchMedia('(prefers-reduced-motion: reduce)').matches);notify(`${added} screen${added===1?'':'s'} added. Your ${totalDuration().toFixed(1)}-second showreel is ready to preview.`,'success')}setError(errors.join(' '))}
+async function acceptFiles(fileList){await ready;setError('');const files=sortByFilename([...fileList]);if(screens.length>=MAX_IMAGES){setError('Your showreel already has 12 screens. Remove one to add another.');return}let errors=[],added=0;for(const file of files){if(screens.length>=MAX_IMAGES){errors.push('Only the first 12 valid screens were added.');break}if(!['image/png','image/jpeg','image/webp','image/svg+xml'].includes(file.type)){errors.push(`${file.name}: use PNG, JPG, WebP or SVG.`);continue}if(file.size>40*1024*1024){errors.push(`${file.name}: please keep each image under 40 MB.`);continue}try{screens.push(await decodeAsset(file,file.name));added++}catch{errors.push(`${file.name} could not be opened. Try exporting it again.`)}}$('#files').value='';if(added){if(settings.orderMode==='name')screens=sortByFilename(screens);ensureSizeSource();position=0;sync();save();setPlaying(!matchMedia('(prefers-reduced-motion: reduce)').matches);notify(`${added} screen${added===1?'':'s'} added. Your ${totalDuration().toFixed(1)}-second showreel is ready to preview.`,'success')}setError(errors.join(' '))}
 function syncCompositionControls(width,height){
   const has=screens.length>0,showSize=has||settings.sizeMode==='custom';
   if(!pendingSizeError){$('#canvasWidth').value=showSize?width:'';$('#canvasHeight').value=showSize?height:''}
@@ -221,14 +220,12 @@ $('#canvasWidth').onchange=$('#canvasHeight').onchange=commitSize;
 document.querySelectorAll('[data-background]').forEach(button=>button.onclick=async()=>{
   await ready;presetRequest++;presetLoading=false;settings.background=button.dataset.background;
   if(settings.background==='none'&&settings.format==='video')settings.format='gif';
-  sync();
   if(settings.background==='image'&&!backgroundAsset){await choosePreset([7,8,9,10,12,11].includes(settings.backgroundPreset)?settings.backgroundPreset:7);return}
   sync();save();
 });
 $('#uploadBackground').onclick=()=>$('#backgroundFile').click();
 $('#backgroundFile').onchange=e=>{presetRequest++;const file=e.target.files[0];e.target.value='';uploadBackground(file)};
 $('[data-transparent]').onclick=async()=>{await ready;presetRequest++;presetLoading=false;settings.background='none';if(settings.format==='video')settings.format='gif';sync();save()};
-function presetAsset(index){return presetCache.get(index)}
 async function loadPresetAsset(index){
   const formats=index===7?['avif','webp']:['webp'];
   for(const format of formats){try{const response=await fetch(`assets/reelo/preset-${index}.${format}`);if(!response.ok)throw new Error('Background unavailable');const asset=await decodeAsset(await response.blob(),`Background ${[7,8,9,10,12,11].indexOf(index)+1}`);asset.preset=true;return asset}catch(error){if(format===formats.at(-1))throw error}}
@@ -236,7 +233,7 @@ async function loadPresetAsset(index){
 async function choosePreset(index){
   await ready;const request=++presetRequest;
   const previousPreset=settings.backgroundPreset;presetLoading=true;settings.backgroundPreset=index;settings.background='image';sync();
-  try{const asset=await presetAsset(index);if(request!==presetRequest)return;if(backgroundAsset&&!backgroundAsset.preset)URL.revokeObjectURL(backgroundAsset.url);backgroundAsset=asset;presetCache.trim();presetLoading=false;settings.backgroundPreset=index;settings.background='image';sync();save()}
+  try{const asset=await presetCache.get(index);if(request!==presetRequest)return;if(backgroundAsset&&!backgroundAsset.preset)URL.revokeObjectURL(backgroundAsset.url);backgroundAsset=asset;presetCache.trim();presetLoading=false;settings.backgroundPreset=index;settings.background='image';sync();save()}
   catch{if(request!==presetRequest)return;presetLoading=false;settings.backgroundPreset=previousPreset;if(!backgroundAsset)settings.background='none';sync();notify('Could not load the background. Please try again.')}
 }
 document.querySelectorAll('[data-preset]').forEach(button=>{
@@ -262,7 +259,7 @@ async function init(){
       if(!['light','dark','none','image','solid','gradient'].includes(settings.background))settings.background='light';if(!['source','custom'].includes(settings.sizeMode))settings.sizeMode='source';
       settings.seconds=Math.max(.1,Math.min(10,Number(settings.seconds)||1.5));settings.fade=Math.max(.02,Math.min(3,settings.seconds*.8,Number(settings.fade)||.5));
       for(const entry of stored.screens.slice(0,MAX_IMAGES)){try{const asset=await decodeAsset(entry.blob,entry.name,entry.id);asset.sourceVersion=entry.sourceVersion||1;screens.push(asset)}catch{}}
-      if(settings.background==='image'&&Number.isInteger(settings.backgroundPreset)&&[7,8,9,10,12,11].includes(settings.backgroundPreset)){try{backgroundAsset=await presetAsset(settings.backgroundPreset)}catch{settings.background='none'}}
+      if(settings.background==='image'&&Number.isInteger(settings.backgroundPreset)&&[7,8,9,10,12,11].includes(settings.backgroundPreset)){try{backgroundAsset=await presetCache.get(settings.backgroundPreset)}catch{settings.background='none'}}
       if(stored.background){try{backgroundAsset=await decodeAsset(stored.background.blob,stored.background.name)}catch{settings.background='light'}}
       if(settings.background==='image'&&!backgroundAsset)settings.background='none';if(settings.background==='none'&&settings.format==='video')settings.format='gif';
       if(settings.orderMode==='name')screens=sortByFilename(screens);ensureSizeSource();
@@ -295,7 +292,7 @@ $('#supportButton').onclick=()=>{setPlaying(false);openFromTrigger($('#supportDi
 $('#supportLater').onclick=()=>$('#supportDialog').close();
 $('#supportLink').onclick=()=>$('#supportDialog').close();
 $('#supportDialog').addEventListener('close',()=>feedback.dismiss());
-$('#download').addEventListener('click',()=>{setTimeout(()=>{if($('#renderDialog').classList.contains('is-ready')){$('#renderedVideo').pause();$('#renderDialog').close()}},0)});
+$('#download').addEventListener('click',()=>{setTimeout(()=>{if($('#renderDialog').classList.contains('is-ready'))$('#renderDialog').close()},0)});
 $('#renderDialog').addEventListener('close',()=>{if($('#renderDialog').classList.contains('is-ready'))setTimeout(()=>feedback.request(),0);else feedback.activity()});
 const exportMotion=createExportMotion($('#renderDialog'));
 let imageReveal=null,revealImport=null,revealRun=0;
@@ -303,7 +300,6 @@ const warmImageReveal=()=>revealImport??=import('./image-reveal.mjs');
 $('#export').addEventListener('pointerenter',()=>warmImageReveal().catch(()=>{}),{passive:true});
 $('#export').addEventListener('focus',()=>warmImageReveal().catch(()=>{}));
 $('#renderDialog').addEventListener('close',()=>{revealRun++;imageReveal?.stop()});
-$('#renderDialog').addEventListener('close',()=>setTimeout(()=>{if($('#renderDialog').open)return;const video=$('#renderedVideo');video.pause();video.removeAttribute('src');video.load();$('#renderedGif').removeAttribute('src')},300));
 let exportStartGeometry=null;
 function prepareExportDialog(){
   exportMotion.reset();exportStartGeometry=null;imageReveal?.stop();const run=++revealRun;
@@ -312,14 +308,11 @@ function prepareExportDialog(){
   const [mediaWidth,mediaHeight]=outputSize(),mediaScale=Math.min(330/mediaWidth,220/mediaHeight);
   dialog.style.setProperty('--export-media-width',(mediaWidth*mediaScale/330*100)+'%');dialog.style.setProperty('--export-media-height',(mediaHeight*mediaScale/220*100)+'%');
   const poster=$('#exportPoster'),[w,h]=outputSize(),scale=Math.min(1,660/w,440/h);poster.width=Math.max(1,Math.round(w*scale));poster.height=Math.max(1,Math.round(h*scale));draw(poster.getContext('2d',{alpha:true}),poster.width,poster.height,0);
-  $('#renderedVideo').poster=poster.toDataURL('image/png');
   dialog.classList.add('reveal-pending');
   warmImageReveal().then(({createImageReveal})=>{if(run!==revealRun||!rendering||dialog.classList.contains('is-ready'))return;imageReveal??=createImageReveal(dialog);imageReveal.start();imageReveal.progress($('#renderProgress').value/100)}).catch(()=>dialog.classList.remove('reveal-pending'));
 }
 function finishExportDialog(blob){
   imageReveal?.finish();$('#renderDialog').classList.remove('reveal-pending');
-  // Keep the same first-frame canvas visible through completion.
-  $('#renderedVideo').hidden=$('#renderedGif').hidden=true;$('#renderedVideo').pause();
   const previous=exportStartGeometry||exportMotion.capture();exportStartGeometry=null;
   $('#cancelRender').hidden=true;$('#renderDialog').classList.add('is-ready');$('#shareResult').hidden=false;$('#renderTitle').textContent='Your reel is ready!';
   $('#exportFilename').textContent=$('#download').download;$('#download').textContent=`Download · ${(blob.size/1024/1024).toFixed(1)} MB`;
@@ -330,9 +323,9 @@ new MutationObserver(()=>{const value=$('#renderProgress').value;$('#renderDialo
 // and show the correct length. Segment size in streamed WebM is unspecified.
 async function addWebmDuration(blob,duration){const bytes=new Uint8Array(await blob.arrayBuffer());function read(offset,id=false){if(offset>=bytes.length)return null;let mask=128,n=1;while(n<=8&&!(bytes[offset]&mask)){mask>>=1;n++}if(n>8||offset+n>bytes.length)return null;let value=id?bytes[offset]:bytes[offset]&(mask-1);for(let i=1;i<n;i++)value=value*256+bytes[offset+i];return {value,n}}
 function encodeSize(value,n){if(value>=2**(7*n)-1)return null;const b=new Uint8Array(n);let v=value;for(let i=n-1;i>=0;i--){b[i]=v%256;v=Math.floor(v/256)}b[0]|=1<<(8-n);return b}
-let offset=0,segment=null;while(offset<bytes.length){const id=read(offset,true);if(!id)break;const size=read(offset+id.n);if(!size)break;const start=offset+id.n+size.n;if(id.value===0x18538067){segment={start,size,offset:offset+id.n};break}offset=start+size.value}if(!segment)return blob;offset=segment.start;while(offset<bytes.length){const id=read(offset,true),size=id&&read(offset+id.n);if(!id||!size)break;const start=offset+id.n+size.n,end=start+size.value;if(end>bytes.length)break;if(id.value===0x1549a966){let scale=1000000,child=start;while(child<end){const cid=read(child,true),cs=cid&&read(child+cid.n);if(!cid||!cs)return blob;const pos=child+cid.n+cs.n;if(cid.value===0x4489)return blob;if(cid.value===0x2ad7b1){scale=0;for(let k=0;k<cs.value;k++)scale=scale*256+bytes[pos+k]}child=pos+cs.value}const newSize=encodeSize(size.value+11,size.n);if(!newSize)return blob;const durationEntry=new Uint8Array(11);durationEntry.set([0x44,0x89,0x88]);new DataView(durationEntry.buffer).setFloat64(3,duration*1e9/scale,false);const result=new Uint8Array(bytes.length+11);result.set(bytes.slice(0,offset+id.n));result.set(newSize,offset+id.n);result.set(bytes.slice(start,end),start);result.set(durationEntry,end);result.set(bytes.slice(end),end+11);return new Blob([result],{type:blob.type})}offset=end}return blob}
-async function exportVideo(){await ready;if(!screens.length||rendering)return;const [w,h]=outputSize();if(typeof MediaRecorder==='undefined'||!canvas.captureStream){notify('Video export is not supported in this browser. Please use a recent Chrome, Edge, or Safari.');return}const encoding=videoEncoding(w,h,type=>MediaRecorder.isTypeSupported(type)),mime=encoding?.mimeType;if(!mime){notify('This browser cannot encode video. Please try a recent Chrome or Edge.');return}prepareExportDialog();let recorder,stream,frameID,cancelled=false,hidden=false;const dialog=$('#renderDialog'),duration=totalDuration();setPlaying(false);position=0;updatePreview();rendering=true;document.body.classList.add('rendering');$('#renderTitle').textContent='Creating your reel...';$('#renderDescription').textContent='Keep this tab open while your video renders.';$('#renderProgress').value=0;$('#renderPercent').textContent='0%';$('#cancelRender').hidden=false;$('#download').hidden=$('#backToEditor').hidden=$('#renderedVideo').hidden=$('#renderedGif').hidden=true;$('#renderedGif').removeAttribute('src');$('#renderedVideo').pause();$('#renderedVideo').removeAttribute('src');openFromTrigger(dialog,$('#export'));cancelRender=()=>{cancelled=true;cancelAnimationFrame(frameID);if(recorder&&recorder.state!=='inactive')recorder.stop()};$('#cancelRender').onclick=()=>cancelRender?.();dialog.oncancel=e=>{e.preventDefault();cancelRender?.()};const onVisibility=()=>{if(document.hidden){hidden=true;cancelRender?.()}};document.addEventListener('visibilitychange',onVisibility);
-try{const out=document.createElement('canvas');out.width=w;out.height=h;const c=out.getContext('2d',{alpha:false});if(!c||out.width!==w||out.height!==h)throw new Error('Unsupported canvas size');draw(c,w,h,0);stream=out.captureStream(FPS);const bitrate=Math.min(60_000_000,Math.max(10_000_000,Math.round(w*h*FPS*.18)));recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:bitrate});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};const stopped=new Promise((resolve,reject)=>{recorder.onstop=resolve;recorder.onerror=e=>reject(e.error||new Error('Video encoder error'))});recorder.start(200);const start=performance.now();let lastEncodedAt=start-1000/FPS;const tick=now=>{const t=Math.min(duration,(now-start)/1000);if(now-lastEncodedAt<1000/FPS&&t<duration&&!cancelled){frameID=requestAnimationFrame(tick);return}lastEncodedAt=now;draw(c,w,h,Math.min(t,duration-.001));position=t;const pct=Math.min(100,Math.round(t/duration*100));$('#renderProgress').value=pct;$('#renderPercent').textContent=pct+'%';if(t<duration&&!cancelled)frameID=requestAnimationFrame(tick);else if(recorder.state!=='inactive')recorder.stop()};frameID=requestAnimationFrame(tick);await stopped;if(cancelled){dialog.close();notify(hidden?'Rendering stopped because the tab was hidden. Keep it visible and try again.':'Video creation cancelled.');return}if(!chunks.length)throw new Error('No video frames');let blob=new Blob(chunks,{type:recorder.mimeType||mime});if(mime.includes('webm')){try{blob=await addWebmDuration(blob,duration)}catch{}}if(outputURL)URL.revokeObjectURL(outputURL);outputURL=URL.createObjectURL(blob);const ext=mime.includes('mp4')?'mp4':'webm';exportStartGeometry=exportMotion.capture();updateCompositionSize(blob.size);$('#download').href=outputURL;$('#download').download=downloadName(ext);$('#download').textContent=`Download ${ext.toUpperCase()} · ${(blob.size/1024/1024).toFixed(1)} MB`;$('#renderTitle').textContent='Your work, ready to show.';$('#renderDescription').textContent=`${screens.length} screen${screens.length===1?'':'s'} · ${duration.toFixed(1)} seconds · ${w} × ${h} · 30 fps`;$('#renderPercent').textContent='100%';$('#renderProgress').value=100;$('#download').hidden=$('#backToEditor').hidden=$('#renderedVideo').hidden=false;$('#renderedVideo').src=outputURL;$('#backToEditor').onclick=()=>{dialog.close();$('#renderedVideo').pause()};dialog.oncancel=null;finishExportDialog(blob);
+let offset=0,segment=null;while(offset<bytes.length){const id=read(offset,true);if(!id)break;const size=read(offset+id.n);if(!size)break;const start=offset+id.n+size.n;if(id.value===0x18538067){segment={start};break}offset=start+size.value}if(!segment)return blob;offset=segment.start;while(offset<bytes.length){const id=read(offset,true),size=id&&read(offset+id.n);if(!id||!size)break;const start=offset+id.n+size.n,end=start+size.value;if(end>bytes.length)break;if(id.value===0x1549a966){let scale=1000000,child=start;while(child<end){const cid=read(child,true),cs=cid&&read(child+cid.n);if(!cid||!cs)return blob;const pos=child+cid.n+cs.n;if(cid.value===0x4489)return blob;if(cid.value===0x2ad7b1){scale=0;for(let k=0;k<cs.value;k++)scale=scale*256+bytes[pos+k]}child=pos+cs.value}const newSize=encodeSize(size.value+11,size.n);if(!newSize)return blob;const durationEntry=new Uint8Array(11);durationEntry.set([0x44,0x89,0x88]);new DataView(durationEntry.buffer).setFloat64(3,duration*1e9/scale,false);const result=new Uint8Array(bytes.length+11);result.set(bytes.slice(0,offset+id.n));result.set(newSize,offset+id.n);result.set(bytes.slice(start,end),start);result.set(durationEntry,end);result.set(bytes.slice(end),end+11);return new Blob([result],{type:blob.type})}offset=end}return blob}
+async function exportVideo(){await ready;if(!screens.length||rendering)return;const [w,h]=outputSize();if(typeof MediaRecorder==='undefined'||!canvas.captureStream){notify('Video export is not supported in this browser. Please use a recent Chrome, Edge, or Safari.');return}const encoding=videoEncoding(w,h,type=>MediaRecorder.isTypeSupported(type)),mime=encoding?.mimeType;if(!mime){notify('This browser cannot encode video. Please try a recent Chrome or Edge.');return}prepareExportDialog();let recorder,stream,frameID,cancelled=false,hidden=false;const dialog=$('#renderDialog'),duration=totalDuration();setPlaying(false);position=0;updatePreview();rendering=true;document.body.classList.add('rendering');$('#renderTitle').textContent='Creating your reel...';$('#renderDescription').textContent='Keep this tab open while your video renders.';$('#renderProgress').value=0;$('#renderPercent').textContent='0%';$('#cancelRender').hidden=false;$('#download').hidden=$('#backToEditor').hidden=true;openFromTrigger(dialog,$('#export'));cancelRender=()=>{cancelled=true;cancelAnimationFrame(frameID);if(recorder&&recorder.state!=='inactive')recorder.stop()};$('#cancelRender').onclick=()=>cancelRender?.();dialog.oncancel=e=>{e.preventDefault();cancelRender?.()};const onVisibility=()=>{if(document.hidden){hidden=true;cancelRender?.()}};document.addEventListener('visibilitychange',onVisibility);
+try{const out=document.createElement('canvas');out.width=w;out.height=h;const c=out.getContext('2d',{alpha:false});if(!c||out.width!==w||out.height!==h)throw new Error('Unsupported canvas size');draw(c,w,h,0);stream=out.captureStream(FPS);const bitrate=Math.min(60_000_000,Math.max(10_000_000,Math.round(w*h*FPS*.18)));recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:bitrate});const chunks=[];recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};const stopped=new Promise((resolve,reject)=>{recorder.onstop=resolve;recorder.onerror=e=>reject(e.error||new Error('Video encoder error'))});recorder.start(200);const start=performance.now();let lastEncodedAt=start-1000/FPS;const tick=now=>{const t=Math.min(duration,(now-start)/1000);if(now-lastEncodedAt<1000/FPS&&t<duration&&!cancelled){frameID=requestAnimationFrame(tick);return}lastEncodedAt=now;draw(c,w,h,Math.min(t,duration-.001));position=t;const pct=Math.min(100,Math.round(t/duration*100));$('#renderProgress').value=pct;$('#renderPercent').textContent=pct+'%';if(t<duration&&!cancelled)frameID=requestAnimationFrame(tick);else if(recorder.state!=='inactive')recorder.stop()};frameID=requestAnimationFrame(tick);await stopped;if(cancelled){dialog.close();notify(hidden?'Rendering stopped because the tab was hidden. Keep it visible and try again.':'Video creation cancelled.');return}if(!chunks.length)throw new Error('No video frames');let blob=new Blob(chunks,{type:recorder.mimeType||mime});if(mime.includes('webm')){try{blob=await addWebmDuration(blob,duration)}catch{}}if(outputURL)URL.revokeObjectURL(outputURL);outputURL=URL.createObjectURL(blob);const ext=mime.includes('mp4')?'mp4':'webm';exportStartGeometry=exportMotion.capture();updateCompositionSize(blob.size);$('#download').href=outputURL;$('#download').download=downloadName(ext);$('#renderDescription').textContent=`${screens.length} screen${screens.length===1?'':'s'} · ${duration.toFixed(1)} seconds · ${w} × ${h} · 30 fps`;$('#renderPercent').textContent='100%';$('#renderProgress').value=100;$('#download').hidden=$('#backToEditor').hidden=false;$('#backToEditor').onclick=()=>dialog.close();dialog.oncancel=null;finishExportDialog(blob);
 }catch(error){console.error(error);dialog.close();notify('Could not finish the video. Please try again in a recent Chrome or Edge.')}finally{cancelAnimationFrame(frameID);document.removeEventListener('visibilitychange',onVisibility);stream?.getTracks().forEach(track=>track.stop());cancelRender=null;rendering=false;document.body.classList.remove('rendering')}};
 
 async function exportGif(){
@@ -344,8 +337,8 @@ async function exportGif(){
   $('#renderTitle').textContent='Creating your reel...';
   $('#renderDescription').textContent='Keep this tab open while your GIF renders.';
   $('#renderProgress').value=0;$('#renderPercent').textContent='0%';$('#cancelRender').hidden=false;
-  $('#download').hidden=$('#backToEditor').hidden=$('#renderedVideo').hidden=$('#renderedGif').hidden=true;
-  $('#renderedVideo').pause();$('#renderedVideo').removeAttribute('src');$('#renderedGif').removeAttribute('src');
+  $('#download').hidden=$('#backToEditor').hidden=true;
+
   openFromTrigger(dialog,$('#export'));
   cancelRender=()=>{cancelled=true;worker?.terminate();if(pending){clearTimeout(pending.timer);pending.reject(new DOMException('Cancelled','AbortError'));pending=null}};
   $('#cancelRender').onclick=()=>cancelRender?.();dialog.oncancel=e=>{e.preventDefault();cancelRender?.()};
@@ -369,11 +362,9 @@ async function exportGif(){
     const blob=new Blob([result.buffer],{type:'image/gif'});
     if(outputURL)URL.revokeObjectURL(outputURL);outputURL=URL.createObjectURL(blob);
     exportStartGeometry=exportMotion.capture();updateCompositionSize(blob.size);$('#download').href=outputURL;$('#download').download=downloadName('gif');
-    $('#download').textContent=`Download GIF · ${(blob.size/1024/1024).toFixed(1)} MB`;
-    $('#renderTitle').textContent='Your GIF is ready.';
     $('#renderDescription').textContent=`${screens.length} screen${screens.length===1?'':'s'} · ${duration.toFixed(1)} seconds · ${w} × ${h} · looping`;
     $('#renderPercent').textContent='100%';$('#renderProgress').value=100;$('#cancelRender').hidden=true;
-    $('#download').hidden=$('#backToEditor').hidden=$('#renderedGif').hidden=false;$('#renderedGif').alt='Rendered animated GIF showreel';$('#renderedGif').src=outputURL;
+    $('#download').hidden=$('#backToEditor').hidden=false;
     $('#backToEditor').onclick=()=>dialog.close();dialog.oncancel=null;position=duration;updatePreview();finishExportDialog(blob);
   }catch(error){dialog.close();if(cancelled)notify('GIF export cancelled.');else{console.error(error);notify('GIF export failed. '+error.message)}}
   finally{worker?.terminate();if(pending)clearTimeout(pending.timer);cancelRender=null;rendering=false;document.body.classList.remove('rendering')}
@@ -392,7 +383,7 @@ document.querySelectorAll('[data-ratio]').forEach(button=>button.onclick=async()
   const error=sizeError(width,height);if(error){notify(error);return}
   settings.sizeMode='custom';settings.width=width;settings.height=height;pendingSizeError='';sync();save();
 });
-document.querySelectorAll('[data-color]').forEach(button=>button.onclick=async()=>{await ready;settings.background='solid';setSolidColor(button.dataset.color);sync();save()});
+document.querySelectorAll('[data-color]').forEach(button=>button.onclick=async()=>{await ready;setSolidColor(button.dataset.color);sync()});
 
 mountTactileRanges();
 
